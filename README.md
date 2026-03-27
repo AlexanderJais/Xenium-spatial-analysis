@@ -94,7 +94,7 @@ a colour-coded log panel (green = ok, amber = warning, red = error). A Stop butt
 is always available. The page auto-refreshes every 1.5 seconds while running.
 
 ### 📊 Results
-All 13 figures displayed inline with a dropdown selector and thumbnail gallery.
+All 17 figures displayed inline with a dropdown selector and thumbnail gallery.
 Individual download buttons for each figure. Separate tabs for:
 
   Global DGE table        searchable by gene name, colour-coded by log2FC
@@ -186,7 +186,8 @@ with Type 42 embedded fonts. Colour-blind-safe Wong (2011) palette throughout.
     │       ├── 3_roi_manager.py     Interactive ROI drawing (Plotly)
     │       ├── 4_run.py             Launch pipeline + live log
     │       ├── 5_results.py         Figure viewer + downloads
-    │       └── 6_help.py            Inline documentation
+    │       ├── 6_gene_explorer.py   On-demand spatial expression map for any gene
+    │       └── 7_help.py            Inline documentation
     │
     ├── run_xenium_mbh.py            End-to-end pipeline for the 4+4 AGED/ADULT MBH study
     │                                (single production entry point — used by app, launcher, CLI)
@@ -214,7 +215,7 @@ with Type 42 embedded fonts. Colour-blind-safe Wong (2011) palette throughout.
         ├── spatial_stats.py         Moran's I, co-expression, neighbourhood enrichment
         ├── pipeline.py              Two-condition pipeline orchestrator
         ├── figures.py               Nature-grade figures 1-8
-        ├── figures_extended.py      Nature-grade figures 9-11, 14-16
+        ├── figures_extended.py      Nature-grade figures 9-11, 14-17
         └── figures_panel.py         Nature-grade figures 12-13 (slide/panel QC)
 
 ---

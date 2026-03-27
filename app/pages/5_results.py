@@ -72,7 +72,7 @@ FIGURE_CATALOG = [
     ("fig12_slide_qc",       "Per-slide QC + MBH yield"),
     ("fig13_panel_qc",       "Panel composition + custom gene overlap"),
     ("fig14_insulin",        "Insulin pathway spatial expression"),
-    ("fig15_galanin",        "Galanin co-expression network"),
+    ("fig15_galanin",        "Galanin spatial maps, violin & log₂FC lollipop"),
     ("fig16_composition",    "Cell type composition (scCODA)"),
     ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
 ]
