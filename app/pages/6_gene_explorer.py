@@ -68,20 +68,13 @@ def _get_lognorm(adata):
 def _resolve_cache() -> Path | None:
     """Find the best available AnnData cache."""
     output_dir = Path(st.session_state["output_dir"])
-    cache_dir  = output_dir.parent / (output_dir.name + "_cache")
-    candidates = [
-        cache_dir / "adata_mbh_preprocessed.h5ad",
-        cache_dir / "adata_mbh_raw.h5ad",
-        output_dir / "adata_mbh_final.h5ad",
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    return None
+    p = output_dir / "adata_mbh_final.h5ad"
+    return p if p.exists() else None
 
 
-def _plot_gene(adata, gene: str, spot_size: float, vmax_pct: int) -> bytes:
-    """Render spatial expression figure and return as PNG bytes."""
+def _plot_gene(adata, gene: str, spot_size: float, vmax_pct: int,
+               fmt: str = "png", dpi: int = 150) -> bytes:
+    """Render spatial expression figure and return as PNG or PDF bytes."""
     gi   = list(adata.var_names).index(gene)
     X    = _get_lognorm(adata)
     _xi  = X[:, gi]
@@ -151,7 +144,7 @@ def _plot_gene(adata, gene: str, spot_size: float, vmax_pct: int) -> bytes:
     fig.tight_layout(pad=0.3)
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+    fig.savefig(buf, format=fmt, dpi=dpi, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
@@ -198,7 +191,7 @@ with col_gene:
     gene_input = st.text_input(
         "Gene name",
         placeholder="e.g. Wfs1",
-        help="Type any gene from the 307-gene panel. Case-insensitive.",
+        help=f"Type any gene from the {adata.n_vars}-gene panel. Case-insensitive.",
     ).strip()
 
     # Autocomplete suggestions as user types
@@ -251,73 +244,23 @@ if gene_input:
             use_container_width=True,
         )
     with dl_col2:
-        # Also render a high-res PDF for publication
+        # High-res PDF for publication
         if st.button("⬇️ Download PDF (300 dpi)", use_container_width=True):
             with st.spinner("Rendering high-res PDF…"):
-                gi   = list(adata.var_names).index(gene)
-                X    = _get_lognorm(adata)
-                _xi  = X[:, gi]
-                expr = np.array(_xi.todense()).ravel() if hasattr(_xi, "todense") else np.array(_xi).ravel()
-                vmax = float(np.percentile(expr[expr > 0], vmax_pct)) if (expr > 0).any() else 1.0
-
-                cond_key   = "condition"
-                slide_key2 = "slide_id" if "slide_id" in adata.obs.columns else cond_key
-                conditions = sorted(adata.obs[cond_key].unique().tolist())
-                slides_per_cond = {
-                    cond: sorted(adata.obs.loc[adata.obs[cond_key] == cond, slide_key2].unique())
-                    for cond in conditions
-                }
-                all_cols   = [(cond, sid) for cond in conditions for sid in slides_per_cond[cond]]
-                n_cols     = len(all_cols)
-                panel_w    = 2.4
-
-                fig2, axes2 = plt.subplots(1, n_cols,
-                                           figsize=(panel_w * n_cols, panel_w * 0.90),
-                                           squeeze=False)
-                fig2.patch.set_facecolor("#111111")
-                sc2 = None
-                for col, (cond, sid) in enumerate(all_cols):
-                    ax = axes2[0, col]
-                    mask = (adata.obs[cond_key] == cond) & (adata.obs[slide_key2] == sid)
-                    sub  = adata[mask]
-                    if sub.n_obs == 0 or "spatial" not in sub.obsm:
-                        ax.axis("off"); continue
-                    xy = sub.obsm["spatial"]
-                    _e = X[mask, :][:, gi]
-                    e  = np.array(_e.todense()).ravel() if hasattr(_e, "todense") else np.array(_e).ravel()
-                    sc2 = ax.scatter(xy[:,0], xy[:,1], c=e, cmap=GREY_RED,
-                                     vmin=0, vmax=vmax, s=spot_size, alpha=0.85,
-                                     linewidths=0, rasterized=True)
-                    ax.set_facecolor("#1A1A1A"); ax.set_aspect("equal")
-                    ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-                    ax.spines[:].set_visible(False)
-                    ax.set_title(f"{cond}\n{sid}", fontsize=5.5, color="#DDDDDD", pad=3)
-                if sc2 is not None:
-                    cax2 = axes2[0,-1].inset_axes([1.03, 0.1, 0.06, 0.8])
-                    cbar2 = fig2.colorbar(sc2, cax=cax2)
-                    cbar2.set_label("log-norm", fontsize=6, color="#CCCCCC", labelpad=3)
-                    cbar2.ax.tick_params(labelsize=5, colors="#CCCCCC", width=0.4, length=2)
-                    cbar2.outline.set_edgecolor("#444444"); cbar2.outline.set_linewidth(0.4)
-                fig2.suptitle(f"{gene}  —  spatial expression across all MBH slides",
-                              fontsize=9, color="#EEEEEE", y=1.02)
-                fig2.tight_layout(pad=0.3)
-                pdf_buf = io.BytesIO()
-                fig2.savefig(pdf_buf, format="pdf", dpi=300, bbox_inches="tight",
-                             facecolor=fig2.get_facecolor())
-                plt.close(fig2)
-                pdf_buf.seek(0)
-                st.download_button(
-                    "📄 Save PDF",
-                    data=pdf_buf.getvalue(),
-                    file_name=f"{gene}_spatial_all_slides.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
+                pdf_bytes = _plot_gene(adata, gene, spot_size, vmax_pct,
+                                       fmt="pdf", dpi=300)
+            st.download_button(
+                "📄 Save PDF",
+                data=pdf_bytes,
+                file_name=f"{gene}_spatial_all_slides.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 # ── Quick gene info ───────────────────────────────────────────────────────────
 st.divider()
 st.subheader("Panel gene reference")
-st.caption("Browse all 307 genes in the harmonised panel.")
+st.caption(f"Browse all {adata.n_vars} genes in the harmonised panel.")
 
 search = st.text_input("Filter genes", placeholder="Type to search…",
                         key="panel_search").strip().lower()
