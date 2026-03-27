@@ -660,6 +660,24 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         logger.info("Fig 14 skipped — cluster DGE not available.")
 
     # ------------------------------------------------------------------
+    # Fig 15: Galanin (Gal) expression in the ageing MBH
+    # ------------------------------------------------------------------
+    try:
+        fe.plot_galanin_panel(
+            adata                = adata,
+            dge_results          = dge,
+            condition_key        = "condition",
+            cluster_key          = group_key,
+            cell_type_key        = "cell_type",
+            representative_slides= representative_slides,
+            output_dir           = OUTPUT_DIR,
+            fmt                  = CFG.figure_format,
+            dpi                  = CFG.dpi,
+        )
+    except Exception as e:
+        logger.warning("Fig 15 (galanin panel) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
@@ -774,6 +792,7 @@ def _print_figure_index(out: Path):
         ("fig12_slide_qc",        "Per-slide QC + MBH yield overview"),
         ("fig13_panel_qc",        "Panel composition + custom gene overlap QC"),
         ("fig14_insulin_signalling", "Insulin & metabolic signalling panel"),
+        ("fig15_galanin",           "Galanin (Gal) expression across cell types"),
     ]
     for name, desc in table:
         f = out / f"{name}.pdf"

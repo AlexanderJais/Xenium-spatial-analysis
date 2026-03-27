@@ -203,7 +203,7 @@ All figures follow **Nature Publishing Group** standards:
 | fig12_slide_qc | Per-slide cell counts, transcript yield, condition balance |
 | fig13_panel_qc | Panel composition bars + custom gene presence heatmap + UpSet histogram |
 | fig14_insulin | Insulin/metabolic signalling gene panel across cell types |
-| fig15_galanin | Galanin regulation: log₂FC per cluster (bar) + spatial Gal expression ADULT and AGED |
+| fig15_galanin | Galanin (Gal): spatial maps ADULT/AGED (panels a,b), split violin per cell type (c), per-cell-type log₂FC lollipop with BH-corrected significance (d) |
 """)
 
 with tab_trouble:

@@ -858,3 +858,341 @@ def plot_insulin_panel(
     out = _savefig(fig, output_dir / "fig14_insulin_signalling", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
+
+
+# ===========================================================================
+# Figure 15: Galanin (Gal) expression changes in the ageing MBH
+# ===========================================================================
+
+_GAL_GENE = "Gal"
+
+
+def _bh_correct(pvalues: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg FDR correction — scipy-version-independent."""
+    n = len(pvalues)
+    if n == 0:
+        return np.array([])
+    order    = np.argsort(pvalues)
+    pv_sort  = np.asarray(pvalues)[order]
+    adjusted = np.empty(n)
+    cummin   = 1.0
+    for i in range(n - 1, -1, -1):
+        cummin          = min(cummin, pv_sort[i] * n / (i + 1))
+        adjusted[order[i]] = cummin
+    return np.clip(adjusted, 0.0, 1.0)
+
+
+def plot_galanin_panel(
+    adata: ad.AnnData,
+    dge_results: Optional[pd.DataFrame] = None,
+    condition_key: str = "condition",
+    cluster_key: str = "leiden",
+    cell_type_key: str = "cell_type",
+    padj_col: str = "pval_adj",
+    log2fc_col: str = "log2fc",
+    pval_thresh: float = 0.05,
+    representative_slides: Optional[dict] = None,
+    spot_size: float = 3.0,
+    output_dir: Optional[Path] = None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 15 — Galanin (Gal) expression changes in the ageing MBH.
+
+    A: Spatial Gal expression map — representative ADULT section (dark bg)
+    B: Spatial Gal expression map — representative AGED section (dark bg)
+    C: Split violin of Gal log-norm expression per cell type × condition
+    D: Per-cell-type log₂FC (AGED/ADULT) lollipop with BH-corrected significance
+
+    Per-cell-type fold changes are computed from lognorm means (difference of
+    geometric-mean approximations in natural-log space, converted to log₂FC).
+    Mann-Whitney U tests across cells with Benjamini-Hochberg correction across
+    cell types provide significance markers — note this is cell-level
+    pseudoreplication; interpret as exploratory, not confirmatory.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Preprocessed and annotated AnnData (lognorm layer required).
+    dge_results : pd.DataFrame, optional
+        Global DGE table; used to overlay the bulk Gal effect size and p-value.
+    cell_type_key : str
+        obs column with cell type labels; falls back to cluster_key if absent.
+    pval_thresh : float
+        BH-adj-p threshold for significance asterisks in panel D.
+    representative_slides : dict, optional
+        {condition: slide_id} mapping for spatial panels A/B.
+    """
+    from scipy import stats as _stats
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+    apply_nature_style()
+
+    gene = _GAL_GENE
+
+    # ── Guard: gene absent from panel ─────────────────────────────────────────
+    if gene not in adata.var_names:
+        logger.warning("'%s' not found in adata.var_names; skipping fig15.", gene)
+        fig, ax = plt.subplots(figsize=(SINGLE, 1.5))
+        ax.text(0.5, 0.5, f"Gene '{gene}' not in Xenium panel",
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=8, color="#888888")
+        ax.axis("off")
+        out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
+
+    # ── Data preparation ──────────────────────────────────────────────────────
+    ct_key     = cell_type_key if cell_type_key in adata.obs.columns else cluster_key
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
+    cell_types = sorted(
+        adata.obs[ct_key].dropna().unique(), key=_safe_cluster_sort_key
+    )
+
+    # Dense lognorm matrix (_get_lognorm converts sparse → dense internally)
+    X        = _get_lognorm(adata)
+    gi       = list(adata.var_names).index(gene)
+    expr_all = np.asarray(X[:, gi]).ravel()
+
+    cond_a = conditions[0]                                     # ADULT / Control
+    cond_b = conditions[1] if len(conditions) > 1 else cond_a  # AGED / Treatment
+
+    # Per-cell-type, per-condition expression vectors
+    cond_mask = {c: (adata.obs[condition_key] == c).values for c in conditions}
+    ct_mask   = {ct: (adata.obs[ct_key] == ct).values        for ct in cell_types}
+    ct_cond_expr: dict[str, dict[str, np.ndarray]] = {
+        ct: {c: expr_all[ct_mask[ct] & cond_mask[c]] for c in conditions}
+        for ct in cell_types
+    }
+
+    # Per-cell-type log₂FC (lognorm means → natural-log difference → /ln(2))
+    # and Mann-Whitney U two-sided p-value
+    lfc_per_ct:  dict[str, float] = {}
+    pval_per_ct: dict[str, float] = {}
+    for ct in cell_types:
+        va = ct_cond_expr[ct][cond_a]
+        vb = ct_cond_expr[ct][cond_b]
+        mean_a = float(va.mean()) if len(va) > 0 else 0.0
+        mean_b = float(vb.mean()) if len(vb) > 0 else 0.0
+        lfc_per_ct[ct] = (mean_b - mean_a) / np.log(2)
+        if len(va) >= 3 and len(vb) >= 3:
+            _, p = _stats.mannwhitneyu(vb, va, alternative="two-sided")
+        else:
+            p = 1.0
+        pval_per_ct[ct] = p
+
+    # BH correction across all cell types
+    ct_list  = list(cell_types)
+    padj_per_ct = dict(
+        zip(ct_list, _bh_correct(np.array([pval_per_ct[ct] for ct in ct_list])))
+    )
+
+    # Resolve representative slides for spatial panels
+    slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
+    if representative_slides is None:
+        representative_slides = {}
+        if slide_col is not None:
+            for cond in conditions:
+                slides = sorted(
+                    adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()
+                )
+                if slides:
+                    representative_slides[cond] = slides[0]
+
+    # Expression colour scale (shared A + B, 99th percentile of positive cells)
+    pos_vals = expr_all[expr_all > 0]
+    vmax     = float(np.percentile(pos_vals, 99)) if len(pos_vals) > 0 else 1.0
+    _EXPR_CMAP = mcolors.LinearSegmentedColormap.from_list(
+        "grey_red",
+        ["#2A2A2A", "#7B1010", "#CC2222", "#FF6B35", "#FFD166"],
+        N=256,
+    )
+
+    # ── Figure layout ─────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 1.10))
+    gs  = gridspec.GridSpec(
+        2, 2, figure=fig,
+        height_ratios=[1.05, 1.0],
+        wspace=0.42, hspace=0.58,
+    )
+    ax_a = fig.add_subplot(gs[0, 0])   # spatial: ADULT
+    ax_b = fig.add_subplot(gs[0, 1])   # spatial: AGED
+    ax_c = fig.add_subplot(gs[1, 0])   # split violin per cell type
+    ax_d = fig.add_subplot(gs[1, 1])   # log₂FC lollipop per cell type
+
+    # ── Panels A & B: Spatial Gal expression ──────────────────────────────────
+    def _draw_spatial(ax, cond, title):
+        if "spatial" not in adata.obsm:
+            ax.text(0.5, 0.5, "No spatial data", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=7, color="#888888")
+            ax.axis("off")
+            return None
+        sid = representative_slides.get(cond)
+        if sid is not None and slide_col is not None:
+            idx = np.where(cond_mask[cond] & (adata.obs[slide_col] == sid).values)[0]
+        else:
+            idx = np.where(cond_mask[cond])[0]
+        if len(idx) == 0:
+            ax.text(0.5, 0.5, f"No cells for {cond}", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=7, color="#888888")
+            ax.axis("off")
+            return None
+        xy = adata.obsm["spatial"][idx]
+        e  = expr_all[idx]
+        sc = ax.scatter(
+            xy[:, 0], xy[:, 1],
+            c=e, cmap=_EXPR_CMAP, vmin=0, vmax=vmax,
+            s=spot_size, alpha=0.85, linewidths=0, rasterized=True,
+        )
+        ax.set_facecolor("#1A1A1A")
+        ax.set_aspect("equal")
+        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        ax.spines[:].set_visible(False)
+        ax.set_title(title, fontsize=7, color="#EEEEEE", pad=3)
+        return sc
+
+    sc_a = _draw_spatial(ax_a, cond_a, f"Galanin — {cond_a}")
+    sc_b = _draw_spatial(ax_b, cond_b, f"Galanin — {cond_b}")
+
+    # Single shared colorbar anchored to the right of panel B
+    ref_sc = sc_b if sc_b is not None else sc_a
+    if ref_sc is not None:
+        cax  = ax_b.inset_axes([1.04, 0.05, 0.04, 0.90])
+        cbar = fig.colorbar(ref_sc, cax=cax)
+        cbar.set_label("log-norm", fontsize=6, color="#CCCCCC")
+        cbar.ax.yaxis.set_tick_params(labelsize=6, colors="#CCCCCC")
+        cbar.outline.set_linewidth(0.4)
+        cbar.outline.set_edgecolor("#555555")
+
+    _panel_label(ax_a, "a")
+    _panel_label(ax_b, "b")
+
+    # ── Panel C: Split violins per cell type × condition ──────────────────────
+    n_ct        = len(cell_types)
+    cond_colour = {
+        c: CONDITION_COLOURS.get(c, WONG[i % len(WONG)])
+        for i, c in enumerate(conditions)
+    }
+    offsets = {cond_a: -0.18, cond_b: 0.18}  # left/right split
+
+    for ci, ct in enumerate(cell_types):
+        for cond in conditions:
+            vals = ct_cond_expr[ct][cond]
+            if len(vals) < 5:
+                continue
+            col = cond_colour[cond]
+            off = offsets.get(cond, 0.0)
+            try:
+                from scipy.stats import gaussian_kde as _kde
+                kde     = _kde(vals, bw_method=0.35)
+                x_range = np.linspace(float(vals.min()), float(vals.max()), 100)
+                dens    = kde(x_range)
+                dens    = dens / dens.max() * 0.30   # normalise half-width
+                ax_c.fill_betweenx(
+                    x_range,
+                    ci + off - dens,
+                    ci + off + dens,
+                    color=col, alpha=0.55, linewidth=0,
+                )
+            except Exception:
+                pass
+            # Median marker
+            ax_c.scatter(ci + off, float(np.median(vals)),
+                         color=col, s=12, zorder=4,
+                         linewidths=0.5, edgecolors="white")
+
+    ax_c.set_xticks(range(n_ct))
+    _short_c = [
+        ct.replace("GABAergic neuron", "GABA")
+          .replace("Glutamatergic neuron", "Glut")
+          .replace(" neuron", "")
+          .replace("(", "").replace(")", "").strip()
+        for ct in cell_types
+    ]
+    ax_c.set_xticklabels(_short_c, rotation=50, ha="right", fontsize=6)
+    ax_c.set_ylabel("Gal log-norm expression", fontsize=6)
+    ax_c.set_title("Galanin expression by cell type", fontsize=7)
+    ax_c.set_xlim(-0.6, n_ct - 0.4)
+    ax_c.spines[["top", "right"]].set_visible(False)
+
+    leg_c = [mpatches.Patch(color=cond_colour[c], label=c) for c in conditions]
+    ax_c.legend(handles=leg_c, frameon=False, fontsize=6, loc="upper right")
+    _panel_label(ax_c, "c")
+
+    # ── Panel D: Per-cell-type log₂FC lollipop ────────────────────────────────
+    # Sorted by absolute fold change (largest effect at top)
+    ct_sorted = sorted(cell_types, key=lambda ct: abs(lfc_per_ct[ct]), reverse=True)
+    y_pos   = np.arange(len(ct_sorted))
+    lfcs    = np.array([lfc_per_ct[ct]  for ct in ct_sorted])
+    sigs    = np.array([padj_per_ct[ct] < pval_thresh for ct in ct_sorted])
+    colours = [cond_colour[cond_b] if lfc > 0 else cond_colour[cond_a] for lfc in lfcs]
+    alphas  = np.where(sigs, 1.0, 0.28)
+
+    for i, (lfc, col, alpha, sig) in enumerate(zip(lfcs, colours, alphas, sigs)):
+        ax_d.hlines(i, 0, lfc, colors=col, linewidth=0.9, alpha=float(alpha))
+        ax_d.scatter(lfc, i, color=col, s=22 if sig else 7,
+                     zorder=3, alpha=float(alpha), linewidths=0)
+        if sig:
+            ha_  = "left"  if lfc >= 0 else "right"
+            off_ = 0.012   if lfc >= 0 else -0.012
+            ax_d.text(lfc + off_, i, "✱",
+                      ha=ha_, va="center", fontsize=7, color="black")
+
+    ax_d.axvline(0, color="black", lw=0.5, zorder=2)
+    ax_d.set_yticks(y_pos)
+    _short_d = [
+        ct.replace("GABAergic neuron", "GABA")
+          .replace("Glutamatergic neuron", "Glut")
+          .replace(" neuron", "")
+          .replace("(", "").replace(")", "").strip()
+        for ct in ct_sorted
+    ]
+    ax_d.set_yticklabels(_short_d, fontsize=6)
+    ax_d.set_xlabel(f"log₂FC  Gal  ({cond_b} / {cond_a})", fontsize=6)
+    ax_d.set_title(
+        f"Galanin fold change per cell type\n(✱ BH-adj-p < {pval_thresh})",
+        fontsize=7,
+    )
+    ax_d.spines[["top", "right"]].set_visible(False)
+
+    leg_d = [
+        mpatches.Patch(color=cond_colour[cond_b], label=f"Higher in {cond_b}"),
+        mpatches.Patch(color=cond_colour[cond_a], label=f"Higher in {cond_a}"),
+        mpatches.Patch(color="#BBBBBB", alpha=0.45, label="ns"),
+    ]
+    ax_d.legend(handles=leg_d, frameon=False, fontsize=6, loc="lower right")
+    _panel_label(ax_d, "d")
+
+    # ── Global DGE annotation from bulk results ───────────────────────────────
+    if dge_results is not None and not dge_results.empty:
+        gene_col = "gene" if "gene" in dge_results.columns else dge_results.columns[0]
+        gal_row  = dge_results[dge_results[gene_col] == gene]
+        if (not gal_row.empty
+                and padj_col in gal_row.columns
+                and log2fc_col in gal_row.columns):
+            gal_lfc  = float(gal_row[log2fc_col].iloc[0])
+            gal_padj = float(gal_row[padj_col].iloc[0])
+            sig_star = " ✱" if gal_padj < pval_thresh else ""
+            fig.text(
+                0.5, 0.005,
+                (f"Global DGE (all cells):  log₂FC = {gal_lfc:+.2f},  "
+                 f"BH-adj-p = {gal_padj:.3g}{sig_star}"),
+                ha="center", va="bottom", fontsize=6.5, color="#444444",
+                transform=fig.transFigure,
+            )
+
+    fig.suptitle(
+        "Galanin (Gal) in the ageing hypothalamus (MBH)",
+        fontsize=9, y=1.01,
+    )
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5)
+
+    out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out
