@@ -146,9 +146,9 @@ with tab_params:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | min_counts | 10 | Cells with fewer total transcripts are removed |
-| max_counts | 2000 | Cells above this are likely doublets |
+| max_counts | 5000 | Cells above this are likely doublets |
 | min_genes | 10 | Cells with fewer unique genes are removed |
-| max_genes | 300 | Upper gene count filter |
+| max_genes | 500 | Upper gene count filter |
 
 ### Preprocessing
 | Parameter | Default | Description |
@@ -182,10 +182,10 @@ with tab_figs:
 
 All figures follow **Nature Publishing Group** standards:
 - Column widths: 89 mm (single) / 183 mm (double column)
-- Font: Arial 7 pt body, 8 pt axis titles
+- Font: Arial, 6 pt minimum (body), 7 pt axis labels, 8 pt axis titles
 - 300 DPI minimum
 - Editable PDFs: Type 42 embedded fonts (open in Adobe Illustrator / Affinity Publisher)
-- Wong (2011) colour-blind-safe palette
+- Wong (2011) colour-blind-safe palette for conditions; tab20 extended for >8 clusters
 
 | Figure | Description |
 |--------|-------------|
@@ -230,10 +230,11 @@ Paste x,y pairs (µm) one per line and click Save.
 Check `panel_validation.csv` in the output directory.
 If `n_custom = 0` for a slide, lower `min_slides` in Settings or switch to `union` mode.
 
-**PyDESeq2 is slow**
-PyDESeq2 pseudobulk with 4 replicates is the correct method for publication but
-takes longer than Wilcoxon. Use Wilcoxon for exploratory runs and switch to
-PyDESeq2 for final figures.
+**PyDESeq2 finds no significant genes**
+PyDESeq2 pseudobulk requires ≥ 8 biological replicates per condition to have
+adequate power. With n=4 per group it typically returns no significant results.
+Use **Stringent Wilcoxon** (recommended for n=4) or **C-SIDE pseudobulk** for
+per-cell-type analysis. PyDESeq2 is included for studies with larger n.
 
 **Pipeline log shows `harmony` error**
 ```bash
@@ -252,6 +253,13 @@ The scatter is automatically subsampled to 15,000 cells for display speed.
 
 st.divider()
 st.markdown(
-    "**Citation:** Wolf et al. (scanpy) · Korsunsky et al. (Harmony) · "
-    "Muzellec et al. (PyDESeq2) · McInnes et al. (UMAP) · 10x Genomics (Xenium)"
+    "**Key references:** "
+    "Wolf et al. 2018 (scanpy) · "
+    "Korsunsky et al. 2019 (Harmony) · "
+    "Muzellec et al. 2023 (PyDESeq2) · "
+    "McInnes et al. 2018 (UMAP) · "
+    "Büttner et al. 2021 *Nat Commun* (scCODA) · "
+    "Cable et al. 2022 *Nat Methods* (C-SIDE) · "
+    "Wong 2011 *Nat Methods* (colour palette) · "
+    "10x Genomics (Xenium)"
 )

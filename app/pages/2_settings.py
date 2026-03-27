@@ -17,8 +17,8 @@ inject_css()
 for k, v in {
     "panel_mode": "partial_union", "min_slides": 2,
     "dge_method": "stringent_wilcoxon", "leiden_resolution": 0.6,
-    "n_neighbors": 12, "min_counts": 10, "max_counts": 2000,
-    "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
+    "n_neighbors": 12, "min_counts": 10, "max_counts": 5000,
+    "min_genes": 10, "max_genes": 500, "log2fc_threshold": 1.0,
     "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 20,
     "roi_mode": "polygon", "figure_format": "pdf", "dpi": 300,
 }.items():
@@ -101,7 +101,7 @@ with qc3:
     st.session_state["min_genes"] = int(v)
 
 with qc4:
-    v = st.number_input("Max genes per cell", 50, 500,
+    v = st.number_input("Max genes per cell", 50, 1000,
                          st.session_state["max_genes"])
     st.session_state["max_genes"] = int(v)
 
