@@ -848,7 +848,7 @@ def _print_figure_index(out: Path):
         ("fig11_cluster_dge",     "Per-cluster DEG counts + bubble chart"),
         ("fig12_slide_qc",        "Per-slide QC + MBH yield overview"),
         ("fig13_panel_qc",        "Panel composition + custom gene overlap QC"),
-        ("fig14_insulin_signalling", "Insulin & metabolic signalling panel"),
+        ("fig14_insulin",            "Insulin & metabolic signalling panel"),
         ("fig15_galanin",           "Galanin (Gal) expression across cell types"),
         ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
     ]

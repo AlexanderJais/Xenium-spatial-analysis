@@ -855,7 +855,7 @@ def plot_insulin_panel(
         warnings.simplefilter("ignore")
         fig.tight_layout(pad=0.6)
 
-    out = _savefig(fig, output_dir / "fig14_insulin_signalling", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig14_insulin", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 

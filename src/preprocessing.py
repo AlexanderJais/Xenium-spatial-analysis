@@ -255,8 +255,9 @@ def normalise_and_select_hvg(
         log-normalised expression by its cross-sectional area (in square
         microns).  Reduces the spatial technical confound caused by variable
         cell sizes in brain tissue (neurons are dramatically larger than glia
-        and partially-captured surface cells are smaller).  Applied after
-        library-size normalisation and log transformation.  Default False.
+        and partially-captured surface cells are smaller).  Applied BEFORE
+        library-size normalisation so the scaling occurs in linear count space:
+        log1p(counts × median_area / cell_area).  Default False.
     flavor:
         HVG method used only when n_top_genes is active.
 
