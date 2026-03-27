@@ -72,7 +72,7 @@ DGE method, panel mode, and a live log panel.
 
 ---
 
-## 4. Browse to your Xenium folders
+## 4. Enter your Xenium folder paths
 
 Each Xenium run directory must contain:
 
@@ -86,7 +86,11 @@ Each Xenium run directory must contain:
     experiment.xenium
 ```
 
-Click **Browse …** next to each slide row and navigate to the folder.
+**Web app:** Go to **📁 Study Setup** and paste the full path to each run directory.
+A green tick confirms the directory is valid.
+
+**Desktop launcher:** Click **Browse …** next to each slide row and navigate to the folder.
+
 Rename Slide IDs in the text boxes if needed (e.g. `AGED_Bregma-1.8`).
 
 ---
@@ -108,15 +112,23 @@ Click **Load config** to restore a previous session — no need to re-browse all
 
 ---
 
-## 7. Run
+## 7. Draw ROIs, then run
 
-Click **▶ Run Pipeline**. The log panel streams live output. On the first run:
+**Web app:** Go to **🗺️ ROI Manager** and draw the MBH boundary on each slide
+*before* clicking Run Pipeline. Use the polygon tool in the chart toolbar,
+double-click to close. The dashed orange ellipse is an anatomical atlas hint.
+Saved ROIs are reused automatically on every subsequent run.
 
-1. An MBH ROI drawing window opens for each slide.
+Then go to **🚀 Run Pipeline** and click **▶ Run Pipeline**.
+The log streams live; a Stop button is always available.
+
+**CLI / launcher (first run only):**
+
+1. A Matplotlib drawing window opens for each slide.
 2. Draw a polygon around the mediobasal hypothalamus.
 3. Right-click or press Enter to close the polygon.
 4. The ROI is saved to `roi_cache/<slide_id>_roi.json`.
-5. Subsequent runs reuse the saved ROIs — no GUI needed.
+5. Subsequent runs reuse the saved ROIs automatically.
 
 ---
 
@@ -185,7 +197,8 @@ python run_xenium_mbh.py --redraw-roi
 | **Total peak** | **~3–4 GB** |
 
 Your 48 GB is more than sufficient. For datasets with 50 000+ cells per slide,
-set `n_top_genes = 100` in the launcher to reduce memory.
+set `n_top_genes = 100` in the **⚙️ Settings** page (web app) or edit
+`CFG.n_top_genes` in `run_xenium_mbh.py` to reduce memory.
 
 ---
 
@@ -194,7 +207,9 @@ set `n_top_genes = 100` in the launcher to reduce memory.
 **"No module named scanpy"**
 ```bash
 conda activate xenium_dge
-python launcher.py   # always activate first
+cd app && streamlit run app.py   # web interface
+# or:
+python launcher.py               # desktop launcher
 ```
 
 **matplotlib window does not appear**
@@ -208,6 +223,9 @@ echo "backend: MacOSX" >> ~/.matplotlib/matplotlibrc
 conda install -n xenium_dge -c conda-forge leidenalg -y
 ```
 
-**PyDESeq2 is slow with 4 replicates**
-Switch to `wilcoxon` in the launcher options for exploratory runs.
-PyDESeq2 is recommended for final publication figures only.
+**PyDESeq2 is slow or finds no significant genes with n=4**
+PyDESeq2 pseudobulk requires ≥8 biological replicates per condition to have
+adequate power. With n=4 per group it typically returns no significant results.
+Use **stringent_wilcoxon** (default, recommended for n=4) or **cside** for
+per-cell-type pseudobulk analysis (publication-grade). Switch in the
+**⚙️ Settings** page or set `CFG.dge_method` in `run_xenium_mbh.py`.
