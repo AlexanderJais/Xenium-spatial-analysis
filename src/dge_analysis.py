@@ -678,10 +678,23 @@ def run_dge(
 # ===========================================================================
 
 def _get_counts(adata: ad.AnnData) -> np.ndarray:
-    """Return dense integer count matrix."""
+    """Return dense integer count matrix.
+
+    Prefers ``adata.layers['counts']`` (raw integer counts saved before
+    normalisation by ``normalise_and_select_hvg``).  Falls back to ``.X``
+    with a warning — .X may be log-normalised, which would corrupt pseudobulk
+    aggregation.
+    """
     if "counts" in adata.layers:
         X = adata.layers["counts"]
     else:
+        logger.warning(
+            "_get_counts: 'counts' layer not found in adata.layers. "
+            "Falling back to .X, which may be log-normalised rather than raw "
+            "counts. This will corrupt pseudobulk aggregation. "
+            "Ensure normalise_and_select_hvg() ran before this call so that "
+            "adata.layers['counts'] is populated."
+        )
         X = adata.X
     if sp.issparse(X):
         X = X.toarray()

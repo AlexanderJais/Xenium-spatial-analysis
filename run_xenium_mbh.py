@@ -662,6 +662,8 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     # ------------------------------------------------------------------
     # Fig 15: Galanin (Gal) expression in the ageing MBH
     # ------------------------------------------------------------------
+    # representative_slides is set on CFG in Step 4; use it directly here
+    representative_slides = CFG.representative_slides
     try:
         fe.plot_galanin_panel(
             adata                = adata,

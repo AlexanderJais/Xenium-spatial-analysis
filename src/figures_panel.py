@@ -51,6 +51,25 @@ PANEL_TYPE_COLOURS = {
     "zero_filled"    : "#CCCCCC",   # grey
 }
 
+# Wong 2011 colour-blind-safe palette (same as figures.py)
+_WONG = ["#000000", "#E69F00", "#56B4E9", "#009E73",
+         "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+
+
+def _condition_palette(conditions) -> dict:
+    """
+    Build a condition → hex-colour mapping from the actual condition labels.
+
+    Uses Wong 2011 palette so colours are colour-blind safe and consistent
+    with the rest of the pipeline.  The first sorted condition gets blue
+    (#0072B2), the second gets vermillion (#D55E00), matching the AGED/ADULT
+    convention but working for any study design.
+    """
+    unique = sorted(set(conditions))
+    # Assign from index 5 (blue) onwards in the Wong palette
+    palette_pool = [_WONG[5], _WONG[6], _WONG[1], _WONG[3], _WONG[7], _WONG[2]]
+    return {c: palette_pool[i % len(palette_pool)] for i, c in enumerate(unique)}
+
 
 # ===========================================================================
 # Fig 13: Full panel QC composite
@@ -131,7 +150,7 @@ def plot_panel_overview(
 
 def _plot_composition_bars(ax, adatas, slide_ids, conditions, registry, overlap_df):
     cond_unique = sorted(set(conditions))
-    cond_colours = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours = _condition_palette(conditions)
 
     shared_all_genes  = set(overlap_df[overlap_df["category"] == "shared_all"]["gene"])
     shared_part_genes = set(overlap_df[overlap_df["category"] == "shared_partial"]["gene"])
@@ -191,7 +210,7 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
     n_genes, n_slides = matrix.shape
     Z = matrix.values.astype(float)   # 1 = present, 0 = absent
 
-    cond_colours_map = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours_map = _condition_palette(conditions)
 
     # Split into condition annotation + heatmap
     from matplotlib.gridspec import GridSpecFromSubplotSpec
@@ -316,7 +335,7 @@ def _plot_zerofill_bars(ax, adatas, slide_ids, conditions, used_harmonised: bool
     After partial_union harmonisation: number of zero-filled custom gene
     columns per slide, broken down by shared vs unique.
     """
-    cond_colours_map = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours_map = _condition_palette(conditions)
     x = np.arange(len(slide_ids))
 
     if not adatas or not used_harmonised or "zero_filled" not in adatas[0].var.columns:

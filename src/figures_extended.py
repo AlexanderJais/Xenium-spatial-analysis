@@ -135,7 +135,7 @@ def plot_cell_type_panel(
         ax_a.set_title("Cell types (UMAP)", fontsize=7.5)
         _clean_ax(ax_a)
         leg = ax_a.legend(
-            markerscale=6, frameon=False, fontsize=5.5,
+            markerscale=6, frameon=False, fontsize=6,
             ncol=1,
             loc="upper left",
             bbox_to_anchor=(1.02, 1.0),   # outside the axes, right side
@@ -667,7 +667,7 @@ def plot_insulin_panel(
                       textcoords=("axes fraction", "data"),
                       arrowprops=dict(arrowstyle="-", color=_GROUP_COLOURS[grp], lw=2))
         ax_a.text(-0.235, (y_start + y_end) / 2,
-                  grp.replace("\n", " "), fontsize=5.5, color=_GROUP_COLOURS[grp],
+                  grp.replace("\n", " "), fontsize=6, color=_GROUP_COLOURS[grp],
                   ha="right", va="center", rotation=0,
                   transform=ax_a.get_yaxis_transform())
         cumulative += n
@@ -725,7 +725,7 @@ def plot_insulin_panel(
         [ct.replace("GABAergic neuron", "GABA").replace("Glutamatergic neuron", "Glut")
            .replace(" neuron", "").replace("(", "").replace(")","")
          for ct in cell_types],
-        rotation=60, ha="right", fontsize=5.5,
+        rotation=60, ha="right", fontsize=6,
     )
     ax_b.set_yticks(range(len(valid_sig)))
     ax_b.set_yticklabels(valid_sig, fontsize=6, style="italic")
@@ -746,7 +746,7 @@ def plot_insulin_panel(
     for frac, label in [(0.1, "10%"), (0.5, "50%"), (1.0, "100%")]:
         ax_b.scatter([], [], s=max(2, frac * 60), color="#AAAAAA",
                      edgecolors="#888888", linewidths=0.2, label=label)
-    ax_b.legend(title="% expr.", frameon=False, fontsize=5.5,
+    ax_b.legend(title="% expr.", frameon=False, fontsize=6,
                 title_fontsize=6, loc="upper left",
                 bbox_to_anchor=(1.01, 1.0), borderaxespad=0)
     _panel_label(ax_b, "b")
@@ -777,7 +777,7 @@ def plot_insulin_panel(
         ax_c.set_yticks(range(len(pivot.index)))
         ax_c.set_yticklabels(pivot.index, fontsize=6, style="italic")
         ax_c.set_xticks(range(len(pivot.columns)))
-        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=5.5)
+        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=6)
         ax_c.set_title("Per-cluster log₂FC\n(sig. hits only, adj-p < 0.05)", fontsize=7)
 
         # Overlay significance dots
@@ -1298,7 +1298,7 @@ def plot_composition_panel(
     # X-ticks = replicate IDs
     tick_labels = [str(r).replace("ADULT_", "Ad").replace("AGED_", "Ag") for r in rep_order]
     ax_a.set_xticks(range(len(rep_order)))
-    ax_a.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=5.5)
+    ax_a.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=6)
     ax_a.set_ylabel("Cell type proportion", fontsize=7)
     ax_a.set_ylim(0, 1)
     ax_a.set_title("A", loc="left", fontsize=9, fontweight="bold", pad=3)
@@ -1367,12 +1367,12 @@ def plot_composition_panel(
                 lfc = df_b["log2fc"].iloc[i]
                 ax_b.text(
                     lfc + 0.08 * np.sign(lfc), y_pos[i], "✱",
-                    ha="center", va="center", fontsize=5.5, color=pal[cond_b],
+                    ha="center", va="center", fontsize=6, color=pal[cond_b],
                 )
 
         # Y-axis labels
         ax_b.set_yticks(y_pos)
-        ax_b.set_yticklabels(df_b["cell_type"].values, fontsize=5.5)
+        ax_b.set_yticklabels(df_b["cell_type"].values, fontsize=6)
 
         ax_b.axvline(0, color="#444444", lw=0.7, ls="-")
         ax_b.set_xlabel(f"log₂FC ({cond_b} / {cond_a})", fontsize=7)

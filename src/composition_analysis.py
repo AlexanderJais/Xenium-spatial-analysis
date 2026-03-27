@@ -210,9 +210,11 @@ def _run_sccoda_pertpy(
     """
     Run scCODA using the pertpy interface.
 
-    Pertpy wraps scCODA in an AnnData-compatible API. We build a
-    ``CellTypeSample`` AnnData from the composition table and run the
-    Dirichlet-multinomial MCMC model.
+    Builds a sample-level AnnData (replicates × cell types) that matches the
+    pertpy scCODA API for pre-aggregated count tables (type="sample_level").
+
+    Input: comp_df with rows = biological replicates, cols = cell types + condition.
+    API reference: pertpy >= 0.7, Büttner et al. 2021 Nat Commun 12:6876.
 
     Raises ImportError if pertpy is not installed.
     """
@@ -220,43 +222,78 @@ def _run_sccoda_pertpy(
 
     cell_type_cols = [c for c in comp_df.columns if c not in (condition_key, "n_cells")]
 
-    # Build the CellTypeSample AnnData that scCODA expects:
-    #   .X = count matrix (n_samples × n_cell_types)
-    #   .obs = sample metadata (must contain the condition column)
+    # Build sample-level AnnData:
+    #   .X  = integer count matrix (n_samples × n_cell_types)
+    #   .obs = sample metadata with condition column
+    #   .var = cell type names as index
     X = comp_df[cell_type_cols].values.astype(float)
     obs = comp_df[[condition_key]].copy()
+    obs.index = obs.index.astype(str)
     var = pd.DataFrame(index=cell_type_cols)
 
     sample_adata = ad.AnnData(X=X, obs=obs, var=var)
 
     sccoda = pt.tl.Sccoda()
-    mdata = sccoda.load(
-        sample_adata,
-        type="cell_level",        # our X is already cell-type counts per sample
-        generate_sample_level=False,
-        cell_type_identifier=None,
-        sample_identifier=None,
-        covariate_uns_key=None,
-        covariate_obs_key=condition_key,
-    )
 
-    # Set reference cell type for identifiability
-    mdata = sccoda.prepare(
-        mdata,
-        formula=f"C({condition_key})",
-        reference_cell_type=reference_cell_type,
-    )
+    # type="sample_level" is the correct API for pre-aggregated count tables
+    # where each row is already one biological sample (replicate), not a single
+    # cell.  type="cell_level" expects raw cell-level data and would need
+    # generate_sample_level=True to aggregate — incompatible with our input.
+    try:
+        mdata = sccoda.load(
+            sample_adata,
+            type="sample_level",
+            generate_sample_level=False,
+            covariate_obs_key=condition_key,
+        )
+    except TypeError:
+        # Older pertpy versions may use a different parameter set
+        mdata = sccoda.load(
+            sample_adata,
+            covariate_obs_key=condition_key,
+        )
 
-    # MCMC sampling
-    sccoda.run_nuts(
-        mdata,
-        num_samples=n_mcmc_samples,
-        num_warmup=n_burnin,
-        rng_key=42,
-    )
+    # Set reference cell type for model identifiability
+    # Formula uses patsy C() notation to treat the condition as a categorical
+    try:
+        mdata = sccoda.prepare(
+            mdata,
+            formula=f"C({condition_key})",
+            reference_cell_type=reference_cell_type,
+        )
+    except TypeError:
+        # Some versions accept 'reference' instead of 'reference_cell_type'
+        mdata = sccoda.prepare(
+            mdata,
+            formula=f"C({condition_key})",
+            reference=reference_cell_type,
+        )
+
+    # MCMC sampling via NUTS (No-U-Turn Sampler)
+    try:
+        sccoda.run_nuts(
+            mdata,
+            num_samples=n_mcmc_samples,
+            num_warmup=n_burnin,
+            rng_key=42,
+        )
+    except TypeError:
+        # Older pertpy may use random_seed instead of rng_key
+        sccoda.run_nuts(
+            mdata,
+            num_samples=n_mcmc_samples,
+            num_warmup=n_burnin,
+        )
 
     # Extract results
-    results_raw = sccoda.get_results(mdata)
+    try:
+        results_raw = sccoda.get_results(mdata)
+    except AttributeError:
+        # Some pertpy versions use credible_effects()
+        results_raw = sccoda.credible_effects(mdata)
+
+    if results_raw is None or (hasattr(results_raw, "empty") and results_raw.empty):
+        raise RuntimeError("scCODA returned empty results — check input data.")
 
     # Tidy into canonical format
     return _tidy_sccoda_results(results_raw, reference_cell_type)
@@ -409,6 +446,10 @@ def _run_clr_ttest(
         })
 
     if not rows:
+        logger.warning(
+            "CLR t-test: no cell types had sufficient replicates (need >= 2 per condition). "
+            "Returning empty DataFrame."
+        )
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)

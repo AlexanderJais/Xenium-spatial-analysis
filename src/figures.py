@@ -233,7 +233,7 @@ def plot_qc(
             for _, row in counts.iterrows()
         ]
         ax_c.set_xticks(counts["x"])
-        ax_c.set_xticklabels(short_ids, rotation=45, ha="right", fontsize=5.5)
+        ax_c.set_xticklabels(short_ids, rotation=45, ha="right", fontsize=6)
         ax_c.set_ylabel("Cells in MBH ROI")
         ax_c.set_xlim(-0.6, len(counts) - 0.4)
         ax_c.set_ylim(0, counts["n_cells"].max() * 1.15)
@@ -400,13 +400,13 @@ def _add_scale_arrow(ax):
     length = 0.12
     kw = dict(transform=ax.transAxes, color="black",
               arrowprops=dict(arrowstyle="-|>", color="black", lw=0.7),
-              fontsize=5, ha="center", va="center")
+              fontsize=6, ha="center", va="center")
     ax.annotate("", xy=(x0 + length, y0), xytext=(x0, y0), **kw)
     ax.annotate("", xy=(x0, y0 + length), xytext=(x0, y0), **kw)
     ax.text(x0 + length / 2, y0 - 0.04, "UMAP 1",
-            transform=ax.transAxes, fontsize=5, ha="center")
+            transform=ax.transAxes, fontsize=6, ha="center")
     ax.text(x0 - 0.04, y0 + length / 2, "UMAP 2",
-            transform=ax.transAxes, fontsize=5, ha="center", rotation=90)
+            transform=ax.transAxes, fontsize=6, ha="center", rotation=90)
 
 
 # ===========================================================================
@@ -520,7 +520,7 @@ def plot_spatial_clusters(
         fig_all.legend(
             handles=legend_handles, title="Cluster",
             loc="lower center", frameon=False,
-            fontsize=4.5, title_fontsize=5.5,
+            fontsize=5.5, title_fontsize=6,
             ncol=min(len(clusters), 8),
             bbox_to_anchor=(0.5, -0.03),
         )
@@ -570,7 +570,7 @@ def plot_spatial_clusters(
     fig_repr.legend(
         handles=legend_handles, title="Cluster",
         loc="center right", frameon=False,
-        fontsize=5, title_fontsize=6,
+        fontsize=6, title_fontsize=6,
         ncol=1,
         bbox_to_anchor=(1.0, 0.5),
     )
@@ -805,7 +805,7 @@ def _label_points(ax, df, xcol, ycol, gene_col):
         for _, row in df.iterrows():
             t = ax.text(
                 row[xcol], row[ycol], row[gene_col],
-                fontsize=5.5, style="italic",
+                fontsize=6, style="italic",
                 va="bottom", ha="center",
             )
             texts.append(t)
@@ -820,7 +820,7 @@ def _label_points(ax, df, xcol, ycol, gene_col):
             ax.text(
                 row[xcol] + 0.03, row[ycol] + 0.1,
                 row[gene_col],
-                fontsize=5.5, style="italic",
+                fontsize=6, style="italic",
                 va="bottom",
                 path_effects=[
                     patheffects.withStroke(linewidth=0.6, foreground="white")
@@ -929,7 +929,7 @@ def plot_dge_heatmap(
         interpolation="nearest",
     )
     axes[1].set_yticks(range(len(top_genes)))
-    axes[1].set_yticklabels(top_genes, fontsize=5.5, style="italic")
+    axes[1].set_yticklabels(top_genes, fontsize=6, style="italic")
     axes[1].set_xticks([])
     axes[1].set_xlabel(f"Cells (n = {len(cell_idx)})", fontsize=6)
 
@@ -1218,7 +1218,7 @@ def plot_summary_panel(
     ax_a.set_title("Leiden clusters", fontsize=8)
     # Compact legend: cluster ID only (cell-type labels go on the composition bar)
     leg_a = ax_a.legend(
-        markerscale=4, frameon=False, fontsize=5.5,
+        markerscale=4, frameon=False, fontsize=6,
         ncol=2, title="Cluster", title_fontsize=6,
         loc="upper left", bbox_to_anchor=(1.01, 1.0), borderaxespad=0,
     )
@@ -1272,7 +1272,7 @@ def plot_summary_panel(
     ]
     leg_b = ax_b.legend(
         handles=handles_b,
-        frameon=False, fontsize=5.5,
+        frameon=False, fontsize=6,
         ncol=1, loc="upper left",
         bbox_to_anchor=(1.01, 1.0), borderaxespad=0,
     )
