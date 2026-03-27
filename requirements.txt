@@ -1,0 +1,43 @@
+# Xenium DGE Pipeline — Python dependencies
+# Install with: pip install -r requirements.txt
+# Or use: ./install_mac.sh (macOS, sets up conda env automatically)
+
+# ── Web interface ──────────────────────────────────────────────────────────────
+streamlit >= 1.35
+plotly >= 5.20
+
+# ── Core scientific stack ─────────────────────────────────────────────────────
+numpy >= 1.26
+pandas >= 2.1
+scipy >= 1.12
+matplotlib >= 3.8
+seaborn >= 0.13
+
+# ── Single-cell analysis ──────────────────────────────────────────────────────
+scanpy >= 1.10
+anndata >= 0.10
+
+# ── Spatial transcriptomics ───────────────────────────────────────────────────
+squidpy >= 1.4            # optional but recommended
+
+# ── Batch correction ──────────────────────────────────────────────────────────
+harmonypy >= 0.0.9
+
+# ── Differential expression ───────────────────────────────────────────────────
+pydeseq2 >= 0.4           # optional; wilcoxon used as fallback
+
+# ── Clustering ────────────────────────────────────────────────────────────────
+leidenalg >= 0.10
+igraph >= 0.11
+
+# ── Parquet support (cells.parquet) ──────────────────────────────────────────
+pyarrow >= 14.0
+
+# ── Figure labels ─────────────────────────────────────────────────────────────
+adjustText >= 1.1         # optional; gracefully skipped if absent
+
+# ── HVG selection (seurat_v3 flavor) ────────────────────────────────────────
+scikit-misc >= 0.3       # required for seurat_v3 HVG; installs skmisc
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tqdm >= 4.66
