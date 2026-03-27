@@ -254,9 +254,6 @@ if gene_input:
         # Also render a high-res PDF for publication
         if st.button("⬇️ Download PDF (300 dpi)", use_container_width=True):
             with st.spinner("Rendering high-res PDF…"):
-                import matplotlib
-                matplotlib.use("Agg")
-
                 gi   = list(adata.var_names).index(gene)
                 X    = _get_lognorm(adata)
                 _xi  = X[:, gi]

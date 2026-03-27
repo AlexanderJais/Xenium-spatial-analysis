@@ -148,6 +148,9 @@ with tab_dge:
         lfc_col = "log2fc"
         p_col   = "pval_adj"
         g_col   = "gene" if "gene" in df.columns else df.columns[0]
+        if lfc_col not in df.columns or p_col not in df.columns:
+            st.error(f"DGE CSV is missing expected columns (`{lfc_col}`, `{p_col}`). Found: {list(df.columns)}")
+            st.stop()
 
         _p_thr  = float(st.session_state.get("pval_threshold",  0.01))
         _lfc_thr = float(st.session_state.get("log2fc_threshold", 1.0))

@@ -81,7 +81,7 @@ def plot_gene(
     expr = np.array(_xi.todense()).ravel() if hasattr(_xi, "todense") else np.array(_xi).ravel()
     vmax = float(np.percentile(expr[expr > 0], 99)) if (expr > 0).any() else 1.0
 
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = sorted(adata.obs[condition_key].astype("category").cat.categories.tolist())
     if slide_key not in adata.obs.columns:
         logger.warning("No '%s' column — plotting by condition only.", slide_key)
         slides_per_cond = {c: [c] for c in conditions}
@@ -118,7 +118,7 @@ def plot_gene(
             continue
 
         xy = sub.obsm["spatial"]
-        _e = X[mask, :][:, gi]
+        _e = X[np.asarray(mask), :][:, gi]
         e  = np.array(_e.todense()).ravel() if hasattr(_e, "todense") else np.array(_e).ravel()
 
         sc = ax.scatter(

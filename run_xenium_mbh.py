@@ -73,11 +73,6 @@ from src import figures as fig_module
 from src import figures_extended as fe
 from src import figures_panel as fp
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-    datefmt="%H:%M:%S",
-)
 logger = logging.getLogger("AgedAdultPipeline")
 
 
@@ -690,7 +685,7 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
 
     apply_nature_style()
 
-    slides = adata.obs["slide_id"].cat.categories.tolist()
+    slides = sorted(adata.obs["slide_id"].astype("category").cat.categories.tolist())
     cond_of_slide = adata.obs.groupby("slide_id", observed=True)["condition"].first()
     cond_pal = {"AGED": "#D55E00", "ADULT": "#0072B2"}
 

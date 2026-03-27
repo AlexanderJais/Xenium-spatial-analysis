@@ -175,8 +175,8 @@ for i, slide in enumerate(slides):
                     f"{control_str}",
                     unsafe_allow_html=True,
                 )
-            except Exception:
-                st.caption("Could not read detailed gene counts.")
+            except Exception as _e:
+                st.caption(f"Could not read gene counts: {_e}")
 
     if i == 3:  # separator between AGED and ADULT
         st.divider()

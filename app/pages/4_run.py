@@ -96,6 +96,14 @@ def _build_launcher_config() -> dict:
     """Assemble the JSON config consumed by run_xenium_mbh.py."""
     out_dir   = Path(st.session_state["output_dir"])
     cache_dir = out_dir.parent / (out_dir.name + "_cache")
+    # Validate paths are under the user's home to prevent arbitrary dir creation
+    _home = Path.home()
+    for _p, _name in [(out_dir, "output_dir"), (cache_dir, "cache_dir")]:
+        try:
+            _p.resolve().relative_to(_home)
+        except ValueError:
+            st.error(f"{_name} must be inside your home directory: {_p}")
+            st.stop()
     out_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -379,8 +387,9 @@ if log_q:
         pass
 
     if running and not finished:
-        # Auto-refresh every 1.5 s while running
-        time.sleep(1.5)
+        # Auto-refresh while running; 0.5 s is short enough for responsive UI
+        # without blocking the server thread for too long.
+        time.sleep(0.5)
         st.rerun()
 
 # Render log

@@ -202,6 +202,8 @@ All figures follow **Nature Publishing Group** standards:
 | fig11_cluster_dge | Per-cluster DEG counts (panel a), bubble chart of top DEGs per cluster (panel b) |
 | fig12_slide_qc | Per-slide cell counts, transcript yield, condition balance |
 | fig13_panel_qc | Panel composition bars + custom gene presence heatmap + UpSet histogram |
+| fig14_insulin | Insulin/metabolic signalling gene panel across cell types |
+| fig15_galanin | Galanin regulation: log₂FC per cluster (bar) + spatial Gal expression ADULT and AGED |
 """)
 
 with tab_trouble:

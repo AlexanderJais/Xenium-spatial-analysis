@@ -281,7 +281,8 @@ def neighborhood_enrichment(
     Dict with keys:
         'observed'   -- DataFrame(cell_type x cell_type): observed co-occurrence
         'z_score'    -- z-score relative to permutation null
-        'p_value'    -- two-tailed p-value
+        'p_value'    -- two-tailed bias-corrected permutation p-value (raw)
+        'p_adj'      -- BH FDR-corrected p-value across all cell-type pairs
     """
     if "spatial" not in adata.obsm:
         raise ValueError("adata.obsm['spatial'] required.")
