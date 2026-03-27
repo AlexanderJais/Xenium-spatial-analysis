@@ -188,7 +188,7 @@ def plot_qc(
     ax_b = fig.add_subplot(gs[1])
     ax_c = fig.add_subplot(gs[2])
 
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
     palette = {c: CONDITION_COLOURS.get(c, WONG[i]) for i, c in enumerate(conditions)}
 
     # Panel A: total counts per cell
@@ -321,14 +321,16 @@ def plot_umap(
         ax.text(0.5, 0.5, "UMAP not available", ha="center", va="center",
                 transform=ax.transAxes, fontsize=8, color="#888")
         ax.axis("off")
-        return _savefig(fig, output_dir / "fig2_umap", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig2_umap", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
     # Extra right margin so the cluster legend sits outside panel B
     fig, axes = plt.subplots(1, 2, figsize=(DOUBLE * 1.15, 2.8),
                              gridspec_kw={"wspace": 0.08})
     umap = adata.obsm["X_umap"]
 
     # Panel A: condition
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
     cond_palette = {c: CONDITION_COLOURS.get(c, WONG[i]) for i, c in enumerate(conditions)}
     for cond in conditions:
         mask = adata.obs[condition_key] == cond
@@ -442,9 +444,11 @@ def plot_spatial_clusters(
         ax.text(0.5, 0.5, "Spatial coordinates not available", ha="center", va="center",
                 transform=ax.transAxes, fontsize=8, color="#888")
         ax.axis("off")
-        return _savefig(fig, output_dir / "fig3_spatial_clusters", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig3_spatial_clusters", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
 
-    conditions  = adata.obs[condition_key].cat.categories.tolist()
+    conditions  = adata.obs[condition_key].astype("category").cat.categories.tolist()
     slide_col   = "slide_id" if "slide_id" in adata.obs.columns else None
     # Build cluster colours identically to Fig 2b and Fig 8.
     cluster_colour = get_cluster_colours(adata, cluster_key)
@@ -861,11 +865,13 @@ def plot_dge_heatmap(
         ax.text(0.5, 0.5, "No significant DEGs found\n(try relaxing thresholds)",
                 ha="center", va="center", transform=ax.transAxes, fontsize=8, color="#888")
         ax.axis("off")
-        return _savefig(fig, output_dir / "fig6_heatmap", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig6_heatmap", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
 
     # Sample up to 300 cells per condition for display
     rng = np.random.default_rng(42)
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
     cell_idx = []
     for cond in conditions:
         idx = np.where(adata.obs[condition_key] == cond)[0]
@@ -975,7 +981,7 @@ def plot_spatial_expression(
         If None, first slide per condition is used.
     """
     apply_nature_style()
-    conditions     = adata.obs[condition_key].cat.categories.tolist()
+    conditions     = adata.obs[condition_key].astype("category").cat.categories.tolist()
     slide_col      = "slide_id" if "slide_id" in adata.obs.columns else None
     genes_to_plot  = [g for g in genes if g in adata.var_names][:n_genes]
     n_genes_plot   = len(genes_to_plot)
@@ -986,7 +992,9 @@ def plot_spatial_expression(
         ax.text(0.5, 0.5, "No DEG genes found in spatial data",
                 ha="center", va="center", transform=ax.transAxes, fontsize=8, color="#888")
         ax.axis("off")
-        return _savefig(fig, output_dir / "fig7_spatial_expr", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig7_spatial_expr", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
 
     X       = _get_lognorm(adata)
     var_idx = {g: i for i, g in enumerate(adata.var_names)}
@@ -1022,7 +1030,7 @@ def plot_spatial_expression(
             ax.set_visible(False)
             return None
         xy  = sub.obsm["spatial"]
-        _e  = X[mask, :][:, gi]
+        _e  = X[mask.values if hasattr(mask, 'values') else mask, :][:, gi]
         e   = np.array(_e.todense()).ravel() if hasattr(_e, "todense") else np.array(_e).ravel()
         sc  = ax.scatter(
             xy[:, 0], xy[:, 1],
@@ -1035,7 +1043,7 @@ def plot_spatial_expression(
         ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         ax.spines[:].set_visible(False)
         if row == 0:
-            ax.set_title(title, fontsize=6, color="#EEEEEE" if True else "black")
+            ax.set_title(title, fontsize=6, color="#EEEEEE")
         return sc
 
     def _add_cbar(fig, sc, ax_row_list, gene, fontsize_label=5, fontsize_tick=4.5):
@@ -1167,7 +1175,7 @@ def plot_summary_panel(
     # ── Build ONE canonical cluster colour dict used by every panel ───────────
     cl_col    = get_cluster_colours(adata, cluster_key)
     clusters  = sorted(cl_col.keys(), key=_safe_cluster_sort_key)
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
 
     # Resolve representative slides (one per condition)
     slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
@@ -1177,6 +1185,7 @@ def plot_summary_panel(
                 adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()
             )[0]
             for cond in conditions
+            if len(adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()) > 0
         }
     elif representative_slides is None:
         representative_slides = {}

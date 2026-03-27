@@ -35,7 +35,6 @@ import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import seaborn as sns
 
 # Reuse style helpers from figures.py
 from src.figures import (
@@ -44,10 +43,9 @@ from src.figures import (
     _panel_label,
     _cluster_palette,
     _safe_cluster_sort_key,
+    _get_lognorm,
     DOUBLE, SINGLE, WONG,
-    NATURE_RC,
     CONDITION_COLOURS,
-    DIVERGING_CMAP,
 )
 
 logger = logging.getLogger(__name__)
@@ -345,7 +343,7 @@ def plot_spatial_stats(
         cbar = fig.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.02)
         cbar.set_label("z-score", fontsize=5)
         cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
-        ax.set_title("Neighbourhood enrichment\n(* adj-p < 0.05)")
+        ax.set_title("Neighbourhood enrichment\n(* p < 0.05)")
         _panel_label(ax, chr(ord("a") + panel_idx))
 
     fig.tight_layout(pad=0.4)
@@ -475,13 +473,10 @@ def plot_cluster_dge(
         ax_b.grid(True, color="0.92", linewidth=0.35, zorder=0)
         ax_b.set_title("Top DEGs per group")
 
-        # Colorbar anchored to the right margin of panel B, outside data area
-        pos_b = ax_b.get_position()
-        cax   = fig.add_axes([pos_b.x1 + 0.01, pos_b.y0 + pos_b.height * 0.25,
-                               0.006, pos_b.height * 0.5])
+        # Colorbar anchored to panel B
         sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
-        cbar = fig.colorbar(sm, cax=cax)
+        cbar = fig.colorbar(sm, ax=ax_b, shrink=0.5, pad=0.02, aspect=15)
         cbar.set_label("log$_2$FC", fontsize=5.5)
         cbar.ax.tick_params(labelsize=5, width=0.4, length=2)
         cbar.outline.set_linewidth(0.4)
@@ -681,15 +676,17 @@ def plot_insulin_panel(
     # Dot colour = mean log-norm expression; dot size = fraction expressing
     sig_genes = sorted(sig_global, key=lambda g: gdge.loc[g, log2fc_col])
 
-    cell_types = sorted(
-        adata.obs[cluster_key if cluster_key in adata.obs.columns else "cell_type"
-                  if "cell_type" in adata.obs.columns else cluster_key].unique(),
-        key=_safe_cluster_sort_key,
-    )
-    # Prefer cell_type labels
-    ct_key = "cell_type" if "cell_type" in adata.obs.columns else cluster_key
+    # Prefer cell_type labels if available
+    if cluster_key in adata.obs.columns:
+        ct_key = cluster_key
+    elif "cell_type" in adata.obs.columns:
+        ct_key = "cell_type"
+    else:
+        ct_key = cluster_key
+    if "cell_type" in adata.obs.columns:
+        ct_key = "cell_type"
+    cell_types = sorted(adata.obs[ct_key].unique(), key=_safe_cluster_sort_key)
 
-    import scipy.sparse as _sp
     X    = _get_lognorm(adata)
     vn   = list(adata.var_names)
     valid_sig = [g for g in sig_genes if g in vn]
@@ -702,7 +699,7 @@ def plot_insulin_panel(
         for gi, gene in enumerate(valid_sig):
             idx   = vn.index(gene)
             vals  = np.asarray(sub[:, idx].todense()).ravel() \
-                    if _sp.issparse(sub) else sub[:, idx]
+                    if sp.issparse(sub) else sub[:, idx]
             dot_mean[gi, ci] = float(vals.mean())
             dot_frac[gi, ci] = float((vals > 0).mean())
 
@@ -850,11 +847,11 @@ def plot_insulin_panel(
         "Insulin & metabolic signalling — AGED vs ADULT MBH",
         fontsize=9, y=1.01,
     )
-    with __import__("warnings").catch_warnings():
-        __import__("warnings").simplefilter("ignore")
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         fig.tight_layout(pad=0.6)
 
     out = _savefig(fig, output_dir / "fig14_insulin_signalling", fmt=fmt, dpi=dpi)
     plt.close(fig)
-    logger.info("Saved: %s", out)
     return out

@@ -455,7 +455,7 @@ class MarkerScoring:
             sc.tl.score_genes(
                 adata,
                 gene_list=available,
-                ctrl_size=min(self.ctrl_size, adata.n_vars - len(available) - 1),
+                ctrl_size=max(1, min(self.ctrl_size, adata.n_vars - len(available) - 1)),
                 score_name=key,
             )
             score_keys.append((ct, key))

@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from scipy.spatial import cKDTree
-from scipy.stats import pearsonr
+from scipy.stats import norm, pearsonr
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,6 @@ def morans_i_scan(
                 - (1 / (n-1)**2)
             )
             z_score = (I - E_I) / (np.sqrt(abs(var_I)) + 1e-12)
-            from scipy.stats import norm
             p_value = 2 * (1 - norm.cdf(abs(z_score)))
 
             results.append((gene, float(I), E_I, float(z_score), float(p_value)))
@@ -210,6 +209,13 @@ def spatial_coexpression(
         lag = W.dot(expr)  # (N, G) spatial lag for each gene
         for i in range(n_genes):
             for j in range(i + 1, n_genes):
+                # Guard against zero-variance vectors (spatially invariant genes)
+                if np.std(expr[:, i]) < 1e-9 or np.std(lag[:, j]) < 1e-9 or \
+                   np.std(expr[:, j]) < 1e-9 or np.std(lag[:, i]) < 1e-9:
+                    val = 0.0
+                    matrix[i, j] = val
+                    matrix[j, i] = val
+                    continue
                 r, _ = pearsonr(expr[:, i], lag[:, j])
                 r2, _ = pearsonr(expr[:, j], lag[:, i])
                 val = (r + r2) / 2.0

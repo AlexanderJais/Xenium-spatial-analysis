@@ -202,6 +202,7 @@ def normalise_and_select_hvg(
     n_top_genes: int = 0,
     normalize_by_cell_area: bool = False,
     flavor: str = "seurat_v3",
+    batch_key: str = "condition",
 ) -> ad.AnnData:
     """
     Normalise counts and log-transform.  HVG selection is skipped by default.
@@ -280,7 +281,7 @@ def normalise_and_select_hvg(
     if _effective_flavor == "seurat_v3":
         sc.pp.highly_variable_genes(
             adata, n_top_genes=n_top_genes,
-            flavor="seurat_v3", batch_key="condition", subset=False,
+            flavor="seurat_v3", batch_key=batch_key, subset=False,
         )
         logger.info(
             "Selected %d highly variable genes (of %d total) using seurat_v3",
@@ -295,7 +296,7 @@ def normalise_and_select_hvg(
         adata.layers["lognorm"] = adata.X.copy()
         sc.pp.highly_variable_genes(
             adata, n_top_genes=n_top_genes,
-            flavor=_effective_flavor, batch_key="condition", subset=False,
+            flavor=_effective_flavor, batch_key=batch_key, subset=False,
         )
         logger.info(
             "Selected %d highly variable genes (of %d total) using %s",

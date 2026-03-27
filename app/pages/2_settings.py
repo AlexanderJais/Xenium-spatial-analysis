@@ -19,7 +19,7 @@ for k, v in {
     "dge_method": "stringent_wilcoxon", "leiden_resolution": 0.6,
     "n_neighbors": 12, "min_counts": 10, "max_counts": 2000,
     "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
-    "pval_threshold": 0.01, "n_top_genes": 200, "harmony_max_iter": 20,
+    "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 20,
     "roi_mode": "polygon", "figure_format": "pdf", "dpi": 300,
 }.items():
     if k not in st.session_state:

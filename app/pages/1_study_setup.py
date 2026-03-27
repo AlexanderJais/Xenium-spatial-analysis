@@ -146,9 +146,8 @@ for i, slide in enumerate(slides):
                 # Derive base panel count from the CSV rather than hardcoding 247.
                 # Fall back to 247 only if the CSV cannot be read.
                 try:
-                    import pandas as _pd
                     _base_csv = Path(st.session_state.get("base_panel_csv", ""))
-                    n_predesigned = len(_pd.read_csv(_base_csv)) if _base_csv.exists() else 247
+                    n_predesigned = len(pd.read_csv(_base_csv)) if _base_csv.exists() else 247
                 except Exception:
                     n_predesigned = 247
                 n_custom      = max(0, n_rna - n_predesigned)
@@ -177,7 +176,7 @@ for i, slide in enumerate(slides):
                     unsafe_allow_html=True,
                 )
             except Exception:
-                pass
+                st.caption("Could not read detailed gene counts.")
 
     if i == 3:  # separator between AGED and ADULT
         st.divider()
@@ -225,9 +224,12 @@ with col_a:
         help="Polygon ROIs for each slide are stored here as JSON files.",
     )
     st.session_state["roi_cache_dir"] = roi_dir
-    Path(roi_dir).mkdir(parents=True, exist_ok=True)
-    n_saved = len(list(Path(roi_dir).glob("*_roi.json")))
-    st.caption(f"{n_saved} ROI file(s) saved")
+    roi_path = Path(roi_dir)
+    if roi_path.exists():
+        n_saved = len(list(roi_path.glob("*_roi.json")))
+        st.caption(f"{n_saved} ROI file(s) saved")
+    else:
+        st.caption("Directory will be created when the pipeline runs.")
 
 with col_b:
     out = st.text_input(
@@ -236,7 +238,6 @@ with col_b:
         help="All figures and results files are written here.",
     )
     st.session_state["output_dir"] = out
-    Path(out).mkdir(parents=True, exist_ok=True)
     st.caption(f"Will be created if it does not exist: {out}")
 
 # ── Save / load config ────────────────────────────────────────────────────────

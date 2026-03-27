@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 import anndata as ad
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
@@ -39,8 +38,7 @@ import pandas as pd
 
 from src.figures import (
     apply_nature_style, _savefig, _panel_label,
-    _safe_cluster_sort_key,
-    DOUBLE, SINGLE, WONG,
+    DOUBLE, SINGLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -321,7 +319,7 @@ def _plot_zerofill_bars(ax, adatas, slide_ids, conditions, used_harmonised: bool
     cond_colours_map = {"AGED": "#D55E00", "ADULT": "#0072B2"}
     x = np.arange(len(slide_ids))
 
-    if not used_harmonised or "zero_filled" not in adatas[0].var.columns:
+    if not adatas or not used_harmonised or "zero_filled" not in adatas[0].var.columns:
         ax.text(0.5, 0.5, "Run harmonise() first\nto see zero-fill counts",
                 transform=ax.transAxes, ha="center", va="center",
                 fontsize=7, color="#888888")
@@ -353,7 +351,8 @@ def _plot_zerofill_bars(ax, adatas, slide_ids, conditions, used_harmonised: bool
     ax.legend(frameon=False, fontsize=5, loc="upper right")
 
     # Ideal is zero — add a note
-    max_zf = max(max(zf_shared), max(zf_unique), 1)
+    max_zf = max((s + u for s, u in zip(zf_shared, zf_unique)), default=1)
+    max_zf = max(max_zf, 1)
     ax.set_ylim(0, max_zf * 1.25)
 
 

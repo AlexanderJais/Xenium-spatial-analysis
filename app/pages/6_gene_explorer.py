@@ -8,7 +8,6 @@ Loads from the preprocessed AnnData cache — no pipeline rerun needed.
 
 import sys
 import io
-import logging
 from pathlib import Path
 
 import numpy as np
@@ -91,7 +90,7 @@ def _plot_gene(adata, gene: str, spot_size: float, vmax_pct: int) -> bytes:
 
     cond_key  = "condition"
     slide_key = "slide_id" if "slide_id" in adata.obs.columns else cond_key
-    conditions = adata.obs[cond_key].cat.categories.tolist()
+    conditions = sorted(adata.obs[cond_key].unique().tolist())
     slides_per_cond = {
         cond: sorted(adata.obs.loc[adata.obs[cond_key] == cond, slide_key].unique())
         for cond in conditions
@@ -266,7 +265,7 @@ if gene_input:
 
                 cond_key   = "condition"
                 slide_key2 = "slide_id" if "slide_id" in adata.obs.columns else cond_key
-                conditions = adata.obs[cond_key].cat.categories.tolist()
+                conditions = sorted(adata.obs[cond_key].unique().tolist())
                 slides_per_cond = {
                     cond: sorted(adata.obs.loc[adata.obs[cond_key] == cond, slide_key2].unique())
                     for cond in conditions

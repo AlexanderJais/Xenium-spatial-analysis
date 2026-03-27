@@ -161,8 +161,10 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Set up console + file logging before anything else so every module's
-    # output is captured from the very first log message.
+    # Reconfigure logging for main() so file handler captures everything.
+    # basicConfig is a no-op if handlers already exist, so clear first.
+    root = logging.getLogger()
+    root.handlers.clear()
     logging.basicConfig(
         level   = logging.INFO,
         format  = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
@@ -710,8 +712,10 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
     ax1.set_title("Cells per slide")
 
     # Median counts
+    count_col = "total_counts" if "total_counts" in adata.obs.columns else "n_counts"
     med_counts = [
-        adata.obs.loc[adata.obs["slide_id"] == s, "total_counts"].median()
+        adata.obs.loc[adata.obs["slide_id"] == s, count_col].median()
+        if count_col in adata.obs.columns else 0
         for s in slides
     ]
     ax2.bar(x_pos, med_counts, color=colours, width=0.6, linewidth=0)

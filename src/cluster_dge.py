@@ -130,7 +130,7 @@ def run_cluster_dge(
         # Significance flag — uses canonical column names guaranteed by run_dge()
         res["significant"] = (
             (res["pval_adj"] < pval_thresh)
-            & (res["log2fc"].abs() > log2fc_thresh)
+            & (res["log2fc"].abs() >= log2fc_thresh)
         )
         res["direction"] = "ns"
         res.loc[res["significant"] & (res["log2fc"] > 0), "direction"] = "up"

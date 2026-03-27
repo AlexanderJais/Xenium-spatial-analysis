@@ -147,15 +147,15 @@ with tab_params:
 |-----------|---------|-------------|
 | min_counts | 10 | Cells with fewer total transcripts are removed |
 | max_counts | 2000 | Cells above this are likely doublets |
-| min_genes | 5 | Cells with fewer unique genes are removed |
+| min_genes | 10 | Cells with fewer unique genes are removed |
 | max_genes | 300 | Upper gene count filter |
 
 ### Preprocessing
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| n_top_genes | 200 | Highly variable genes for PCA. Must be ≤ panel size (~297) |
-| leiden_resolution | 0.5 | Higher = more, smaller clusters |
-| n_neighbors | 15 | KNN graph neighbours for UMAP and clustering |
+| n_top_genes | 0 | Highly variable genes for PCA (0 = disabled, use all genes — recommended for Xenium) |
+| leiden_resolution | 0.6 | Higher = more, smaller clusters |
+| n_neighbors | 12 | KNN graph neighbours for UMAP and clustering |
 | harmony_max_iter | 20 | Harmony batch correction iterations |
 
 **Important:** `harmony_key` is always `slide_id` (not condition).

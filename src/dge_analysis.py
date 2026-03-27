@@ -253,6 +253,8 @@ def scanpy_dge(
     )
 
     results = sc.get.rank_genes_groups_df(adata, group=cond_b)
+    # scanpy returns natural-log fold changes; convert to log2 scale
+    results["logfoldchanges"] = results["logfoldchanges"] / np.log(2)
     results = results.rename(
         columns={
             "names"        : "gene",
@@ -657,7 +659,9 @@ def _aggregate_by_replicate(
     groups = obs.groupby([condition_key, replicate_key], observed=True)
     rows, meta_rows = [], []
     for (cond, rep), idx in groups.groups.items():
-        counts = X[obs.index.get_indexer(idx)].sum(axis=0)
+        indexer = obs.index.get_indexer(idx)
+        indexer = indexer[indexer >= 0]  # drop unmatched (-1) indices
+        counts = X[indexer].sum(axis=0)
         sample_id = f"{cond}__{rep}"
         rows.append(pd.Series(counts, index=var_names, name=sample_id))
         meta_rows.append({"sample": sample_id, condition_key: cond, "n_cells": len(idx)})
