@@ -128,15 +128,14 @@ def morans_i_scan(
 
             I = (N / W.sum()) * (np.dot(z, Wz) / denom)
 
-            # Approximate variance under normality assumption
+            # Variance under normality assumption (Cliff & Ord, 1981)
+            # E[I^2] = [n^2 * S1 - n * S2 + 3 * S0^2] / [(n^2-1) * S0^2]
+            # Var(I) = E[I^2] - E[I]^2
             S1, S2 = _compute_s1_s2(W)
-            W_sum = W.sum()
+            S0 = W.sum()
             n = float(N)
-            var_I = (
-                (n * ((n**2 - 3*n + 3)*S1 - n*S2 + 3*W_sum**2))
-                / ((n-1)*(n-2)*(n-3)*W_sum**2)
-                - (1 / (n-1)**2)
-            )
+            E_I2 = (n**2 * S1 - n * S2 + 3 * S0**2) / ((n**2 - 1) * S0**2)
+            var_I = E_I2 - E_I**2
             z_score = (I - E_I) / (np.sqrt(abs(var_I)) + 1e-12)
             p_value = 2 * (1 - norm.cdf(abs(z_score)))
 
@@ -326,11 +325,14 @@ def neighborhood_enrichment(
     null_std  = null_arr.std(axis=0) + 1e-12
     z_score = (observed - null_mean) / null_std
 
-    # Two-tailed p-value from permutation
-    p_value = np.minimum(
-        (null_arr >= observed).mean(axis=0),
-        (null_arr <= observed).mean(axis=0),
-    ) * 2
+    # Two-tailed p-value from permutation, clipped to [0, 1]
+    p_value = np.clip(
+        np.minimum(
+            (null_arr >= observed).mean(axis=0),
+            (null_arr <= observed).mean(axis=0),
+        ) * 2,
+        0.0, 1.0,
+    )
 
     idx = pd.Index(cell_types, name="cell_type")
     return {

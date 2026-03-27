@@ -253,8 +253,7 @@ def scanpy_dge(
     )
 
     results = sc.get.rank_genes_groups_df(adata, group=cond_b)
-    # scanpy returns natural-log fold changes; convert to log2 scale
-    results["logfoldchanges"] = results["logfoldchanges"] / np.log(2)
+    # scanpy already returns log2 fold changes (via np.log2 internally)
     results = results.rename(
         columns={
             "names"        : "gene",

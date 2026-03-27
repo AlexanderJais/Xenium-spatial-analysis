@@ -144,12 +144,17 @@ def run_qc(
 
 def _apply_cell_area_norm(adata: ad.AnnData, enabled: bool) -> None:
     """
-    Optionally divide log-normalised expression by cell area (in situ).
+    Optionally scale expression by cell area (in situ).
+
+    Should be called BEFORE library-size normalisation and log-transform
+    so that the division happens in linear count space:
+        log1p(counts * median_area / cell_area)
+    rather than in log space (which would be log(x)^a, a non-linear distortion).
 
     This corrects for the spatial technical confound in brain tissue where
     neurons have much larger cross-sectional areas than glia, and partially-
     captured surface cells appear artificially small.  Applied in-place to
-    adata.X and adata.layers['lognorm'].
+    adata.X (and adata.layers['lognorm'] if it exists).
 
     Only runs if enabled=True AND adata.obs['cell_area'] exists and is > 0.
     """
@@ -223,7 +228,8 @@ def normalise_and_select_hvg(
     adata:
         QC-filtered AnnData (raw counts in .X or .layers['counts']).
     target_sum:
-        Library-size normalisation target (default 10 000).
+        Library-size normalisation target (default 100, tuned for Xenium
+        targeted panels of ~100-500 genes; scRNA-seq convention is 1e4).
     n_top_genes:
         If 0 (default) or >= adata.n_vars, skip HVG selection and use all
         genes for PCA.  Set to a positive integer smaller than the panel
@@ -251,6 +257,10 @@ def normalise_and_select_hvg(
 
     if not run_hvg:
         # Targeted panel path (recommended for Xenium): use ALL genes.
+        # Cell area normalization must be applied BEFORE log-transform so
+        # that division happens in linear space: log(counts/area) rather
+        # than log(counts) * scale, which would distort the distribution.
+        _apply_cell_area_norm(adata, normalize_by_cell_area)
         sc.pp.normalize_total(adata, target_sum=target_sum)
         sc.pp.log1p(adata)
         adata.layers["lognorm"] = adata.X.copy()
@@ -261,7 +271,6 @@ def normalise_and_select_hvg(
             "(targeted panel; n_top_genes=%d).",
             adata.n_vars, n_top_genes,
         )
-        _apply_cell_area_norm(adata, normalize_by_cell_area)
         return adata
 
     # HVG path — only reached when explicitly requested

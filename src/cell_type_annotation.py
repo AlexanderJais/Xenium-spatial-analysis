@@ -417,11 +417,14 @@ class MarkerScoring:
     def __init__(
         self,
         markers: Optional[dict[str, list[str]]] = None,
-        ctrl_size: int = 50,
+        ctrl_size: Optional[int] = None,
         min_score_delta: float = 0.05,
     ):
         self.markers = markers or BRAIN_MARKERS
-        self.ctrl_size = ctrl_size
+        # For Xenium panels (~100-500 genes), ctrl_size=50 is too large
+        # (Tirosh 2016 used 50 for ~20k-gene scRNA-seq). Scale to panel
+        # size: ~n_vars/25 genes per expression bin.
+        self._ctrl_size_override = ctrl_size
         self.min_score_delta = min_score_delta
 
     def fit_transform(self, adata: ad.AnnData) -> ad.AnnData:
@@ -442,6 +445,14 @@ class MarkerScoring:
             adata = adata.copy()
             adata.X = adata.layers["lognorm"]
 
+        # Compute ctrl_size: scale to panel size if not overridden
+        if self._ctrl_size_override is not None:
+            ctrl_size = self._ctrl_size_override
+        else:
+            # ~n_vars/25 genes per expression bin (scanpy uses 25 bins)
+            ctrl_size = max(1, min(50, adata.n_vars // 25))
+        logger.info("score_genes ctrl_size = %d (panel has %d genes)", ctrl_size, adata.n_vars)
+
         score_keys = []
         for ct, gene_list in self.markers.items():
             available = [g for g in gene_list if g in adata.var_names]
@@ -455,7 +466,7 @@ class MarkerScoring:
             sc.tl.score_genes(
                 adata,
                 gene_list=available,
-                ctrl_size=max(1, min(self.ctrl_size, adata.n_vars - len(available) - 1)),
+                ctrl_size=max(1, min(ctrl_size, adata.n_vars - len(available) - 1)),
                 score_name=key,
             )
             score_keys.append((ct, key))
