@@ -343,7 +343,6 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         # THIS run — not from a hardcoded cluster-number lookup that would
         # silently mislabel clusters whenever resolution, QC, or cell count
         # changes between runs.
-        from src.cell_type_annotation import assign_labels_from_markers
         adata = assign_labels_from_markers(
             adata,
             cluster_key = CFG.cluster_key,
@@ -746,7 +745,8 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
 
     slides = sorted(adata.obs["slide_id"].astype("category").cat.categories.tolist())
     cond_of_slide = adata.obs.groupby("slide_id", observed=True)["condition"].first()
-    cond_pal = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    conds_sorted = sorted(adata.obs["condition"].unique())
+    cond_pal = {c: WONG[i % len(WONG)] for i, c in enumerate(conds_sorted)}
 
     fig = plt.figure(figsize=(DOUBLE, 2.8))
     gs  = gridspec.GridSpec(1, 3, figure=fig, wspace=0.45)

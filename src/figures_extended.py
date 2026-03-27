@@ -24,7 +24,7 @@ Figures:
 
 import logging
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional
 
 import anndata as ad
 import matplotlib as mpl

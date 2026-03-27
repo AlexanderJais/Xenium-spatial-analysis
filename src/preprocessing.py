@@ -6,11 +6,9 @@ Harmony integration, UMAP and Leiden clustering for Xenium data.
 """
 
 import logging
-from typing import Optional
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 import scanpy as sc
 
 logger = logging.getLogger(__name__)
