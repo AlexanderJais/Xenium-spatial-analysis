@@ -24,14 +24,16 @@ This installs:
 
 | Package | Version | How |
 |---------|---------|-----|
-| Miniforge3 (ARM64 conda) | latest | Homebrew cask |
+| Miniforge3 (ARM64 conda) | latest | curl direct |
 | Python 3.11 | ARM64 native | conda-forge |
 | numpy, pandas, scipy, matplotlib, seaborn | latest | conda-forge |
+| statsmodels | latest | conda-forge |
 | scanpy + anndata | latest | conda-forge |
-| leidenalg + igraph | latest | conda-forge (native ARM64) |
+| leidenalg + igraph + umap-learn | latest | conda-forge (native ARM64) |
+| streamlit + plotly | latest | pip |
 | harmonypy | latest | pip |
 | PyDESeq2 | latest | pip |
-| umap-learn | latest | conda-forge |
+| squidpy | latest | pip (optional) |
 | Tkinter | bundled | conda-forge `tk` |
 
 Total disk: ~1.8 GB. Install time: ~8 minutes on a fast connection.
@@ -48,44 +50,25 @@ xenium_dge/data/Xenium_mBrain_v1_1_metadata.csv
 
 ---
 
-## 3. Launch the GUI
+## 3. Launch the web interface (recommended)
 
+**Option A — double-click (easiest):**
+Find `start_app.command` in Finder and double-click it.
+Your browser opens automatically at http://localhost:8501.
+
+**Option B — terminal:**
+```bash
+conda activate xenium_dge
+cd app && streamlit run app.py
+```
+
+**Option C — desktop GUI (alternative):**
 ```bash
 conda activate xenium_dge
 python launcher.py
 ```
-
-A window opens:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Xenium DGE Pipeline — AGED vs ADULT MBH                       │
-├─────────────────────────────────────────────────────────────────┤
-│  Slide folders                                                  │
-│  AGED    AGED_1   [/path/to/aged_run_1]        [Browse…] [✕]   │
-│  AGED    AGED_2   [/path/to/aged_run_2]        [Browse…] [✕]   │
-│  AGED    AGED_3   [/path/to/aged_run_3]        [Browse…] [✕]   │
-│  AGED    AGED_4   [/path/to/aged_run_4]        [Browse…] [✕]   │
-│  ADULT   ADULT_1  [/path/to/adult_run_1]       [Browse…] [✕]   │
-│  ADULT   ADULT_2  [/path/to/adult_run_2]       [Browse…] [✕]   │
-│  ADULT   ADULT_3  [/path/to/adult_run_3]       [Browse…] [✕]   │
-│  ADULT   ADULT_4  [/path/to/adult_run_4]       [Browse…] [✕]   │
-├─────────────────────────────────────────────────────────────────┤
-│  Files    Base panel CSV: [data/Xenium_mBrain_v1_1…] [Browse…] │
-│           Output dir:     [~/xenium_dge_output]       [Browse…] │
-│           ROI cache:      [roi_cache/]                [Browse…] │
-├─────────────────────────────────────────────────────────────────┤
-│  Options  DGE method:   ● Wilcoxon  ○ PyDESeq2                 │
-│           Panel mode:   ● Intersection  ○ Union                │
-│           ROI mode:     ● Polygon  ○ Lasso  ○ Rectangle        │
-├─────────────────────────────────────────────────────────────────┤
-│  [✓ Validate]  [💾 Save config]  [📂 Load config]  [▶ Run]     │
-├─────────────────────────────────────────────────────────────────┤
-│  Pipeline log (live)                                           │
-│  > Loading AGED_1 …                                            │
-│  > Harmony integration …                                       │
-└─────────────────────────────────────────────────────────────────┘
-```
+A Tkinter window opens with fields for slide folders, output directory,
+DGE method, panel mode, and a live log panel.
 
 ---
 
@@ -112,8 +95,8 @@ Rename Slide IDs in the text boxes if needed (e.g. `AGED_Bregma-1.8`).
 
 | Option | Recommendation |
 |--------|---------------|
-| **DGE method** | Start with **Wilcoxon** (fast). Switch to **PyDESeq2** for publication (needs 3+ true biological replicates). |
-| **Panel mode** | **Intersection** — keeps only the 247 base genes guaranteed in every slide. Safe default. |
+| **DGE method** | **stringent_wilcoxon** (default) — cell-level Wilcoxon with post-hoc replication filter; best for n=4 per condition. Use **cside** (Cable et al. 2022) for per-cell-type pseudobulk DESeq2 (publication). **pydeseq2** needs ≥8 replicates to have power. |
+| **Panel mode** | **partial_union** (default) — keeps base genes + custom genes present in ≥2 slides. Recommended for this study. |
 | **ROI mode** | **Polygon** — click vertices around the MBH on each section. A dashed atlas hint ellipse is shown. |
 
 ---
@@ -139,7 +122,7 @@ Click **▶ Run Pipeline**. The log panel streams live output. On the first run:
 
 ## 8. Outputs
 
-All 12 figures are saved to your chosen output directory as **editable PDFs**
+All 17 figures are saved to your chosen output directory as **editable PDFs**
 (Type 42 fonts, readable in Adobe Illustrator / Affinity Publisher):
 
 | Figure | Content |
@@ -156,11 +139,18 @@ All 12 figures are saved to your chosen output directory as **editable PDFs**
 | fig10_spatial_stats.pdf | Moran's I + neighbourhood enrichment |
 | fig11_cluster_dge.pdf | Per-cluster DEG counts + bubble chart |
 | fig12_slide_qc.pdf | Per-slide QC + MBH yield overview |
+| fig13_panel_qc.pdf | Panel composition + custom gene overlap |
+| fig14_insulin.pdf | Insulin/metabolic signalling gene panel |
+| fig15_galanin.pdf | Galanin spatial maps, violin & log₂FC lollipop |
+| fig16_composition.pdf | Cell type composition testing (scCODA) |
+| fig17_neuropeptide_modules.pdf | Neuropeptide co-expression modules (AgRP/NPY, POMC/CART, KNDy, SST, TRH/DA, Galanin) |
 
 Plus:
 - `global_dge_aged_vs_adult.csv` — full DGE results table
 - `cluster_dge_results.csv` — per-cluster DGE
+- `cluster_dge_summary.csv` — DEG counts per cluster
 - `morans_i_mbh.csv` — spatially variable genes
+- `panel_validation.csv` — per-slide gene panel composition
 - `adata_mbh_final.h5ad` — final annotated AnnData
 
 ---

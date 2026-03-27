@@ -209,6 +209,11 @@ pip install \
     || fail "pip install failed."
 ok "pip packages installed."
 
+# --- 4d. Optional: squidpy (neighbourhood enrichment) -----------------------
+log "Installing squidpy (optional — neighbourhood enrichment) …"
+pip install squidpy --quiet && ok "squidpy installed." \
+    || warn "squidpy install failed — neighbourhood enrichment will be skipped (non-fatal)."
+
 # =============================================================================
 # 5. Verification
 # =============================================================================
@@ -221,24 +226,26 @@ failures = []
 optional_warn = []
 
 required = [
-    ("numpy",      "numpy"),
-    ("pandas",     "pandas"),
-    ("scipy",      "scipy"),
-    ("matplotlib", "matplotlib"),
-    ("seaborn",    "seaborn"),
-    ("anndata",    "anndata"),
-    ("scanpy",     "scanpy"),
-    ("harmonypy",  "harmonypy"),
-    ("leidenalg",  "leidenalg"),
-    ("umap",       "umap"),
-    ("pyarrow",    "pyarrow"),
-    ("streamlit",  "streamlit"),
-    ("plotly",     "plotly"),
-    ("tkinter",    "tkinter"),
+    ("numpy",        "numpy"),
+    ("pandas",       "pandas"),
+    ("scipy",        "scipy"),
+    ("matplotlib",   "matplotlib"),
+    ("seaborn",      "seaborn"),
+    ("statsmodels",  "statsmodels"),
+    ("anndata",      "anndata"),
+    ("scanpy",       "scanpy"),
+    ("harmonypy",    "harmonypy"),
+    ("leidenalg",    "leidenalg"),
+    ("umap",         "umap"),
+    ("pyarrow",      "pyarrow"),
+    ("streamlit",    "streamlit"),
+    ("plotly",       "plotly"),
+    ("tkinter",      "tkinter"),
 ]
 
 optional = [
     ("pydeseq2",   "pydeseq2.dds",   "wilcoxon will be used as fallback"),
+    ("squidpy",    "squidpy",         "neighbourhood enrichment will be skipped"),
     ("adjustText", "adjustText",      "volcano gene labels will overlap"),
 ]
 
