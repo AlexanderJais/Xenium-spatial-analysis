@@ -29,6 +29,7 @@ def run_qc(
     min_cells_per_gene: int = 10,
     filter_control_probes: bool = True,
     filter_control_codewords: bool = True,
+    min_cell_area: float = 20.0,
     inplace: bool = True,
 ) -> ad.AnnData:
     """
@@ -49,6 +50,11 @@ def run_qc(
         Unique-gene count thresholds per cell.
     min_cells_per_gene:
         Genes detected in fewer than this many cells are removed.
+    min_cell_area:
+        Minimum cell segmentation area in µm². Cells below this threshold are
+        almost certainly partial captures (cell fragments at tissue edges or
+        section boundaries). Default 20 µm² per Janesick et al. 2023. Set to 0
+        to disable. Only applied when ``adata.obs['cell_area']`` exists.
     filter_control_probes:
         Remove cells where control_probe_counts > 0.  These are cells that
         captured at least one non-biological probe signal — 10x Genomics
@@ -90,6 +96,17 @@ def run_qc(
         & (adata.obs["n_genes_by_counts"] >= min_genes)
         & (adata.obs["n_genes_by_counts"] <= max_genes)
     )
+
+    # ── Cell area filter (Xenium-specific) ───────────────────────────────
+    # Remove partial captures: cells with area < min_cell_area µm² are likely
+    # segmentation fragments at tissue edges (Janesick et al. 2023).
+    n_area_removed = 0
+    if min_cell_area > 0 and "cell_area" in adata.obs.columns:
+        area_vals = adata.obs["cell_area"].values.astype(float)
+        area_mask = (area_vals >= min_cell_area) & np.isfinite(area_vals)
+        n_area_removed = int((~area_mask).sum())
+        mask_cells = mask_cells & area_mask
+        logger.info("QC: %d cells removed (cell_area < %.1f µm²)", n_area_removed, min_cell_area)
 
     # ── Negative control probe filters (Xenium-specific) ─────────────────
     # The Mouse Brain panel has 27 negative control probe sets.  Any cell
@@ -187,11 +204,12 @@ def _apply_cell_area_norm(adata: ad.AnnData, enabled: bool) -> None:
     else:
         adata.X = adata.X * scale[:, None]
 
-    if "lognorm" in adata.layers:
-        if _sp.issparse(adata.layers["lognorm"]):
-            adata.layers["lognorm"] = adata.layers["lognorm"].multiply(scale[:, None]).tocsr()
-        else:
-            adata.layers["lognorm"] = adata.layers["lognorm"] * scale[:, None]
+    # NOTE: do NOT apply area scaling to an existing 'lognorm' layer here.
+    # This function must be called BEFORE log-transform (see docstring), so
+    # 'lognorm' does not yet exist at the point of a correct call. Applying
+    # the scale factor to an already-log-transformed layer would compute
+    # log(x) * scale = log(x^scale), a non-linear power distortion — exactly
+    # what the ordering requirement is designed to prevent.
 
     logger.info(
         "Cell area normalisation applied (median area = %.1f µm²; "
@@ -405,6 +423,29 @@ def run_harmony(
         adata.obsm["X_pca_harmony"] = adata.obsm["X_pca"].copy()
         return adata
 
+    # Warn when each batch corresponds to exactly one biological replicate per
+    # condition — i.e. slides ARE the replicates. Harmony will then correct for
+    # between-replicate variation, which partially removes biological signal that
+    # is replicate-consistent (Korsunsky et al. 2019, Tran et al. 2020).
+    if "condition" in adata.obs.columns:
+        batches_per_cond = (
+            adata.obs.groupby("condition")[batch_key].nunique()
+        )
+        total_batches = n_batches
+        n_conditions = adata.obs["condition"].nunique()
+        if batches_per_cond.sum() == total_batches:
+            # every batch belongs to exactly one condition
+            logger.warning(
+                "Harmony: batch_key='%s' has %d unique values across %d conditions "
+                "(%s). Each batch is a separate biological replicate — Harmony will "
+                "correct between-replicate variation, risking partial removal of "
+                "true biological signal. Verify post-Harmony UMAP still separates "
+                "conditions. Consider using Harmony only for true technical batches "
+                "(multiple slides from the same animal).",
+                batch_key, total_batches, n_conditions,
+                ", ".join(f"{c}: {n}" for c, n in batches_per_cond.items()),
+            )
+
     logger.info("Running Harmony integration on key '%s' (%d batches) …", batch_key, n_batches)
 
     # The scanpy harmony wrapper (sce.pp.harmony_integrate) has a known shape-
@@ -610,6 +651,7 @@ def find_marker_genes(
     method: str = "wilcoxon",
     n_genes: int = 25,
     use_raw: bool = False,
+    reference: str = "rest",
 ) -> ad.AnnData:
     """
     Rank genes per cluster using Wilcoxon rank-sum (or t-test).
@@ -627,7 +669,23 @@ def find_marker_genes(
     use_raw:
         Whether to use .raw or .X for the test. Keep False when .X
         holds log-normalised values.
+    reference:
+        Reference group for the comparison. Default 'rest' (all other clusters
+        pooled). WARNING: 'rest' is a heterogeneous mixture, which deflates
+        fold changes and produces asymmetric comparisons across clusters
+        (Squair et al. 2021, Nature Communications). For publication-quality
+        marker genes, consider pairwise comparisons by calling this function
+        once per cluster with ``reference`` set to a specific other cluster.
     """
+    if reference == "rest":
+        logger.warning(
+            "find_marker_genes: reference='rest' compares each cluster against "
+            "a pooled mixture of all other clusters. This deflates fold changes "
+            "and makes results asymmetric across clusters. For Xenium targeted "
+            "panels, consider pairwise comparisons (reference=<cluster_name>) "
+            "or use condition-level DGE via run_cluster_dge() instead."
+        )
+
     # Use log-normalised values for the test, but work on a shallow copy so
     # we do not silently leave the caller's .X pointing at the lognorm layer.
     if "lognorm" in adata.layers:
@@ -637,12 +695,13 @@ def find_marker_genes(
     sc.tl.rank_genes_groups(
         adata,
         groupby=groupby,
+        reference=reference,
         method=method,
         n_genes=n_genes,
         use_raw=use_raw,
         pts=True,        # store fraction of cells expressing gene
     )
-    logger.info("Marker genes computed for %s.", groupby)
+    logger.info("Marker genes computed for %s (reference='%s').", groupby, reference)
     return adata
 
 
@@ -672,6 +731,7 @@ def full_preprocessing_pipeline(adata: ad.AnnData, cfg) -> ad.AnnData:
         min_cells_per_gene       = cfg.min_cells_per_gene,
         filter_control_probes    = getattr(cfg, "filter_control_probes",    True),
         filter_control_codewords = getattr(cfg, "filter_control_codewords", True),
+        min_cell_area            = getattr(cfg, "min_cell_area",            20.0),
     )
     adata = normalise_and_select_hvg(
         adata,

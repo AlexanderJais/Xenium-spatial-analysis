@@ -81,6 +81,12 @@ class PipelineConfig:
     filter_control_probes: bool = True   # remove cells with control_probe_counts > 0
     filter_control_codewords: bool = True  # remove cells with control_codeword_counts > 0
 
+    # ── Cell area QC ──────────────────────────────────────────────────────
+    # Cells with area < min_cell_area µm² are very likely partial segmentation
+    # captures at tissue edges. Default 20 µm² per Janesick et al. 2023.
+    # Set to 0 to disable (applied only if 'cell_area' is in obs).
+    min_cell_area: float = 20.0
+
     # ── Cell area normalization ───────────────────────────────────────────
     # Normalise expression by cell area after library-size normalisation.
     # Reduces spatial technical confound from variable cell sizes in brain tissue

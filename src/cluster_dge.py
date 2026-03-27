@@ -72,6 +72,20 @@ def run_cluster_dge(
     """
     from src.dge_analysis import run_dge
 
+    # Remove zero-filled custom genes once before the cluster loop.
+    # Each cluster subset would otherwise re-apply the masking redundantly,
+    # and the zero_filled flags are consistent across all clusters.
+    if "zero_filled" in adata.var.columns:
+        keep = ~adata.var["zero_filled"].fillna(False)
+        n_excl = int((~keep).sum())
+        if n_excl > 0:
+            logger.info(
+                "run_cluster_dge: excluding %d zero-filled custom gene(s) "
+                "from all cluster-level tests.",
+                n_excl,
+            )
+            adata = adata[:, keep].copy()
+
     groups = sorted(adata.obs[group_key].unique(), key=lambda x: (0, int(x)) if str(x).lstrip('-').isdigit() else (1, str(x)))
     conditions = adata.obs[condition_key].unique().tolist()
 

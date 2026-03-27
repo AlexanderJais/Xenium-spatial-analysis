@@ -127,6 +127,25 @@ def pseudobulk_deseq2(
     # Filter low-count genes
     gene_mask = bulk_df.sum(axis=0) >= min_counts
     bulk_df = bulk_df.loc[:, gene_mask]
+
+    # Exclude zero-filled custom genes (present only in a subset of slides).
+    # These have structural zeros in slides that did not probe the gene, making
+    # them appear differentially expressed regardless of biology. DESeq2 cannot
+    # distinguish structural zeros from biological absence.
+    if "zero_filled" in adata.var.columns:
+        valid_genes = bulk_df.columns.intersection(
+            adata.var.index[~adata.var["zero_filled"].fillna(False)]
+        )
+        n_excluded = len(bulk_df.columns) - len(valid_genes)
+        if n_excluded > 0:
+            logger.warning(
+                "DESeq2: excluding %d zero-filled custom gene(s) from testing "
+                "(present only in a subset of slides; structural zeros would "
+                "produce spurious fold changes).",
+                n_excluded,
+            )
+        bulk_df = bulk_df[valid_genes]
+
     logger.info(
         "PyDESeq2 input: %d samples x %d genes", bulk_df.shape[0], bulk_df.shape[1]
     )
@@ -233,6 +252,18 @@ def scanpy_dge(
     adata = _subset_cell_type(adata, cell_type_key, cell_type)
     cond_a, cond_b = _resolve_conditions(adata, condition_key, condition_a, condition_b)
 
+    # Exclude zero-filled custom genes — structural zeros from harmonisation
+    # bias the Wilcoxon test toward calling absent genes as down-regulated.
+    if "zero_filled" in adata.var.columns:
+        keep = ~adata.var["zero_filled"].fillna(False)
+        n_excluded = int((~keep).sum())
+        if n_excluded > 0:
+            logger.warning(
+                "scanpy_dge: excluding %d zero-filled custom gene(s) from testing.",
+                n_excluded,
+            )
+            adata = adata[:, keep].copy()
+
     # Use log-normalised values
     if "lognorm" in adata.layers:
         adata = adata.copy()
@@ -302,16 +333,29 @@ def stringent_wilcoxon_dge(
     """
     Wilcoxon rank-sum DGE with multiple stringency filters applied post-hoc.
 
-    This addresses the pseudoreplication concern of plain Wilcoxon by:
+    STATISTICAL CAVEAT — PSEUDOREPLICATION:
+    The Wilcoxon rank-sum test treats every cell as an independent observation,
+    but cells on the same tissue section are spatially correlated. With N_cells
+    per condition the test uses N_cells degrees of freedom, whereas the true
+    biological unit is the slide (animal). This inflates z-scores and
+    p-values by up to 10–50× for spatially autocorrelated genes (Crowell et al.
+    2020 Nature Communications; Squair et al. 2021 Nature Communications).
+
+    For publication-quality DGE, use ``method='pydeseq2'``, which aggregates
+    cells to pseudobulk per replicate before testing and correctly uses N=4
+    biological replicates as degrees of freedom.
+
+    This function partially mitigates pseudoreplication via:
       1. Raising the log2FC threshold to 1.0 (2-fold change)
       2. Tightening the adjusted p-value threshold to 0.01
       3. Requiring the gene to be expressed in >=10% of cells per condition
       4. Requiring minimum mean log-normalised expression
       5. Requiring consistent direction in >=3 out of 4 biological replicates
 
-    Filter 5 is the most important: it directly checks that the effect is
-    replicated across individual animals, compensating for the fact that
-    Wilcoxon treats all cells as independent observations.
+    Filter 5 (replicate consistency) is the most important guard: it verifies
+    the effect replicates across independent animals. It is applied BEFORE the
+    p-value filter to avoid pre-filtering on inflated p-values that bias the
+    gene candidate set entering the consistency check.
 
     Parameters
     ----------
@@ -329,6 +373,20 @@ def stringent_wilcoxon_dge(
     replicate_key:
         obs column identifying biological replicates (default: slide_id).
     """
+    # Exclude zero-filled custom genes before any testing or filter computation.
+    # Structural zeros from panel harmonisation inflate zero counts for slides
+    # that did not probe the gene, biasing per-replicate means and pct filters.
+    if "zero_filled" in adata.var.columns:
+        keep_genes = ~adata.var["zero_filled"].fillna(False)
+        n_excluded = int((~keep_genes).sum())
+        if n_excluded > 0:
+            logger.warning(
+                "stringent_wilcoxon_dge: excluding %d zero-filled custom gene(s) "
+                "from all filters.",
+                n_excluded,
+            )
+            adata = adata[:, keep_genes].copy()
+
     # Step 1: Run standard Wilcoxon
     results = scanpy_dge(
         adata,
@@ -359,54 +417,18 @@ def stringent_wilcoxon_dge(
     logger.info("Stringent Wilcoxon: %d genes after |log2FC| >= %.1f",
                 len(results), lfc_threshold)
 
-    # ── Filter 2: adjusted p-value ────────────────────────────────────────────
-    results = results[results[p_col] < pval_threshold]
-    logger.info("Stringent Wilcoxon: %d genes after adj.p < %.3f",
-                len(results), pval_threshold)
-
     if results.empty:
-        logger.warning("Stringent Wilcoxon: no genes survived p/LFC filters.")
+        logger.warning("Stringent Wilcoxon: no genes survived LFC filter.")
         return results
 
-    # ── Filter 3: minimum expression fraction ─────────────────────────────────
-    if "pct_A" in results.columns and "pct_B" in results.columns:
-        pct_mask = (results["pct_A"] >= min_pct) | (results["pct_B"] >= min_pct)
-        results  = results[pct_mask]
-        logger.info("Stringent Wilcoxon: %d genes after pct >= %.0f%%",
-                    len(results), min_pct * 100)
-
-    # ── Filter 4: minimum mean expression ─────────────────────────────────────
+    # ── Filter 2: replicate consistency (BEFORE p-value filter) ──────────────
+    # Applied before p-value filtering to avoid using inflated cell-level
+    # p-values (which are anti-conservative due to spatial autocorrelation and
+    # pseudoreplication) to pre-select the gene candidate set. Replicating the
+    # effect across independent animals is a stronger biological criterion than
+    # a p-value derived from N_cells degrees of freedom.
     X = adata.layers["lognorm"] if "lognorm" in adata.layers else adata.X
     var_idx = {g: i for i, g in enumerate(adata.var_names)}
-    keep = []
-    for gene in results[g_col]:
-        if gene not in var_idx:
-            keep.append(True)
-            continue
-        gi   = var_idx[gene]
-        expr = X[:, gi]
-        if sp.issparse(expr):
-            expr = np.array(expr.todense()).ravel()
-        else:
-            expr = np.array(expr).ravel()
-        mask_a = adata.obs[condition_key] == cond_a
-        mask_b = adata.obs[condition_key] == cond_b
-        mean_a = expr[mask_a].mean()
-        mean_b = expr[mask_b].mean()
-        keep.append(max(mean_a, mean_b) >= min_mean_expr)
-    results = results[keep]
-    logger.info("Stringent Wilcoxon: %d genes after mean expr >= %.2f",
-                len(results), min_mean_expr)
-
-    if results.empty:
-        logger.warning("Stringent Wilcoxon: no genes survived expression filters.")
-        return results
-
-    # ── Filter 5: replicate consistency ───────────────────────────────────────
-    # For each gene, compute per-slide log2FC (slide_b_mean / slide_a_mean).
-    # Require that >= min_consistent_replicates slides of BOTH conditions show
-    # the same direction as the overall log2FC.  This guards against a single
-    # outlier slide in either condition driving the global effect.
     if replicate_key in adata.obs.columns:
         replicates_a = adata.obs.loc[
             adata.obs[condition_key] == cond_a, replicate_key
@@ -491,6 +513,47 @@ def stringent_wilcoxon_dge(
             "Stringent Wilcoxon: replicate_key '%s' not in obs — "
             "skipping consistency filter.", replicate_key,
         )
+
+    if results.empty:
+        logger.warning("Stringent Wilcoxon: no genes survived replicate consistency filter.")
+        return results
+
+    # ── Filter 3: adjusted p-value ────────────────────────────────────────────
+    results = results[results[p_col] < pval_threshold]
+    logger.info("Stringent Wilcoxon: %d genes after adj.p < %.3f",
+                len(results), pval_threshold)
+
+    if results.empty:
+        logger.warning("Stringent Wilcoxon: no genes survived p-value filter.")
+        return results
+
+    # ── Filter 4: minimum expression fraction ─────────────────────────────────
+    if "pct_A" in results.columns and "pct_B" in results.columns:
+        pct_mask = (results["pct_A"] >= min_pct) | (results["pct_B"] >= min_pct)
+        results  = results[pct_mask]
+        logger.info("Stringent Wilcoxon: %d genes after pct >= %.0f%%",
+                    len(results), min_pct * 100)
+
+    # ── Filter 5: minimum mean expression ─────────────────────────────────────
+    keep = []
+    for gene in results[g_col]:
+        if gene not in var_idx:
+            keep.append(True)
+            continue
+        gi   = var_idx[gene]
+        expr = X[:, gi]
+        if sp.issparse(expr):
+            expr = np.array(expr.todense()).ravel()
+        else:
+            expr = np.array(expr).ravel()
+        mask_a = adata.obs[condition_key] == cond_a
+        mask_b = adata.obs[condition_key] == cond_b
+        mean_a = expr[mask_a].mean()
+        mean_b = expr[mask_b].mean()
+        keep.append(max(mean_a, mean_b) >= min_mean_expr)
+    results = results[keep]
+    logger.info("Stringent Wilcoxon: %d genes after mean expr >= %.2f",
+                len(results), min_mean_expr)
 
     logger.info(
         "Stringent Wilcoxon: %d / %d genes passed all filters",
