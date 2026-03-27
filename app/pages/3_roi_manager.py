@@ -391,8 +391,11 @@ with ctrl_col:
             if st.button("Save pasted ROI", key=f"load_paste_{selected_id}"):
                 try:
                     lines = [l.strip() for l in paste.strip().splitlines() if l.strip()]
-                    verts = [[float(v) for v in l.replace(";",",").split(",")[:2]]
+                    verts = [[float(v.strip()) for v in l.replace(";", ",").split(",")
+                              if v.strip()][:2]
                              for l in lines]
+                    if any(len(v) != 2 for v in verts):
+                        raise ValueError("Each line must contain exactly 2 values (x, y).")
                     if len(verts) >= 3:
                         n_p = _count_in_polygon(cells_df, verts)
                         if n_p == 0:

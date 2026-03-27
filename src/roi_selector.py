@@ -215,7 +215,7 @@ class ROISelector:
                 "Run draw() first or use save_roi() for programmatic setup."
             )
         roi = self._load_roi(roi_path)
-        vertices = np.array(roi["vertices"])
+        vertices = np.array(roi["vertices"], dtype=np.float64).reshape(-1, 2)
 
         if "spatial" not in adata.obsm:
             raise ValueError("adata.obsm['spatial'] required.")
@@ -465,8 +465,9 @@ class ROISelector:
         if "spatial" not in adata.obsm:
             return
         xy = adata.obsm["spatial"].astype(np.float64)
-        vertices = np.array(roi["vertices"])
-        inside   = _points_in_polygon(xy, vertices)
+        vertices = np.array(roi["vertices"], dtype=np.float64).reshape(-1, 2)
+        inside   = _points_in_polygon(xy, vertices) if len(vertices) >= 3 \
+                   else np.zeros(len(xy), dtype=bool)
 
         fig, axes = plt.subplots(1, 2, figsize=(figsize[0] * 1.5, figsize[1]))
 
@@ -477,11 +478,12 @@ class ROISelector:
             self._scatter_background(ax, adata, xy[mask], colour_key,
                                      use_subset_idx=np.where(mask)[0] if not mask.all() else None,
                                      full_adata=adata)
-            closed = np.vstack([vertices, vertices[0]])
-            ax.plot(closed[:, 0], closed[:, 1], "r-", lw=1.5, zorder=5,
-                    label="ROI boundary")
-            ax.fill(vertices[:, 0], vertices[:, 1],
-                    color="red", alpha=0.08, zorder=3)
+            if len(vertices) >= 2:
+                closed = np.vstack([vertices, vertices[0]])
+                ax.plot(closed[:, 0], closed[:, 1], "r-", lw=1.5, zorder=5,
+                        label="ROI boundary")
+                ax.fill(vertices[:, 0], vertices[:, 1],
+                        color="red", alpha=0.08, zorder=3)
             ax.set_title(f"{slide_id}\n{title}", fontsize=8)
 
         plt.suptitle(
