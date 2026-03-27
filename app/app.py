@@ -8,6 +8,10 @@ Run with:  streamlit run app/app.py
 import streamlit as st
 from pathlib import Path
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).parent))
+from ui_utils import inject_css, page_header
+
 # ── Page config (must be first Streamlit call) ──────────────────────────────
 st.set_page_config(
     page_title          = "Xenium DGE Pipeline",
@@ -16,347 +20,8 @@ st.set_page_config(
     initial_sidebar_state = "expanded",
 )
 
-# ── Global CSS ───────────────────────────────────────────────────────────────
-# IBM Plex Sans for body, IBM Plex Mono for code/data, refined scientific palette
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
-/* ── Root tokens ─────────────────────────────────────────────────────────── */
-:root {
-    --navy:       #1B4F8A;
-    --navy-dark:  #0F2E52;
-    --navy-light: #E8EFF8;
-    --teal:       #0A7E6E;
-    --amber:      #C97A0A;
-    --red:        #B02A2A;
-    --bg:         #F5F6F8;
-    --surface:    #FFFFFF;
-    --border:     #D8DCE4;
-    --text:       #0F1923;
-    --muted:      #5A6474;
-    --mono:       'IBM Plex Mono', monospace;
-}
-
-/* ── Typography ──────────────────────────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: 'IBM Plex Sans', sans-serif !important;
-    font-size: 14px;
-    color: var(--text);
-}
-h1 { font-size: 1.75rem !important; font-weight: 600 !important;
-     color: var(--navy-dark) !important; letter-spacing: -0.02em; margin-bottom: 0.25rem !important; }
-h2 { font-size: 1.25rem !important; font-weight: 600 !important;
-     color: var(--navy-dark) !important; letter-spacing: -0.01em; }
-h3 { font-size: 1.05rem !important; font-weight: 500 !important;
-     color: var(--navy) !important; }
-h4 { font-size: 0.95rem !important; font-weight: 500 !important; color: var(--text) !important; }
-
-/* ── App background ──────────────────────────────────────────────────────── */
-.stApp { background: var(--bg) !important; }
-.main .block-container {
-    padding: 2rem 2.5rem 3rem !important;
-    max-width: 1300px;
-}
-
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background: var(--navy-dark) !important;
-    border-right: 1px solid rgba(255,255,255,0.08);
-}
-[data-testid="stSidebar"] * { color: rgba(255,255,255,0.90) !important; }
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {
-    color: #FFFFFF !important;
-}
-[data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.15) !important;
-    margin: 0.75rem 0 !important;
-}
-[data-testid="stSidebar"] a { color: #90C8F0 !important; }
-/* Active page nav highlight */
-[data-testid="stSidebarNav"] li:has(a[aria-current="page"] ) {
-    background: rgba(255,255,255,0.10) !important;
-    border-left: 3px solid #90C8F0 !important;
-    border-radius: 4px;
-}
-[data-testid="stSidebarNav"] a {
-    padding: 0.45rem 0.75rem !important;
-    border-radius: 4px !important;
-    transition: background 0.15s;
-}
-[data-testid="stSidebarNav"] a:hover {
-    background: rgba(255,255,255,0.08) !important;
-}
-
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
-.stButton > button {
-    font-family: 'IBM Plex Sans', sans-serif !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    border-radius: 6px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--surface) !important;
-    color: var(--text) !important;
-    padding: 0.4rem 1rem !important;
-    transition: all 0.15s ease !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important;
-}
-.stButton > button:hover {
-    border-color: var(--navy) !important;
-    color: var(--navy) !important;
-    box-shadow: 0 2px 6px rgba(27,79,138,0.15) !important;
-}
-.stButton > button[kind="primary"] {
-    background: var(--navy) !important;
-    color: #FFFFFF !important;
-    border-color: var(--navy) !important;
-}
-.stButton > button[kind="primary"]:hover {
-    background: var(--navy-dark) !important;
-    border-color: var(--navy-dark) !important;
-    box-shadow: 0 3px 10px rgba(27,79,138,0.30) !important;
-}
-
-/* ── Metric cards ────────────────────────────────────────────────────────── */
-[data-testid="metric-container"] {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    padding: 1rem 1.2rem !important;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important;
-}
-[data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    font-size: 11px !important;
-    font-weight: 500 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    color: var(--muted) !important;
-}
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 1.65rem !important;
-    font-weight: 600 !important;
-    color: var(--navy-dark) !important;
-    font-family: 'IBM Plex Mono', monospace !important;
-}
-
-/* ── Alerts / callouts ───────────────────────────────────────────────────── */
-.stAlert {
-    border-radius: 6px !important;
-    border-left-width: 3px !important;
-    font-size: 13px !important;
-}
-[data-baseweb="notification"][kind="info"]    { border-left-color: var(--navy) !important; }
-[data-baseweb="notification"][kind="success"] { border-left-color: var(--teal) !important; }
-[data-baseweb="notification"][kind="warning"] { border-left-color: var(--amber) !important; }
-[data-baseweb="notification"][kind="error"]   { border-left-color: var(--red) !important; }
-
-/* ── Input widgets ───────────────────────────────────────────────────────── */
-.stTextInput > div > div > input,
-.stNumberInput > div > div > input,
-.stTextArea textarea {
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 12.5px !important;
-    border-radius: 6px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--surface) !important;
-    color: var(--text) !important;
-    transition: border-color 0.15s;
-}
-.stTextInput > div > div > input:focus,
-.stNumberInput > div > div > input:focus,
-.stTextArea textarea:focus {
-    border-color: var(--navy) !important;
-    box-shadow: 0 0 0 2px rgba(27,79,138,0.12) !important;
-}
-.stSelectbox > div > div,
-.stRadio > div {
-    font-size: 13px !important;
-}
-
-/* ── Tabs ────────────────────────────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-    border-bottom: 2px solid var(--border) !important;
-    gap: 0 !important;
-}
-.stTabs [data-baseweb="tab"] {
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    color: var(--muted) !important;
-    padding: 0.6rem 1.1rem !important;
-    border-radius: 0 !important;
-    border-bottom: 2px solid transparent !important;
-    margin-bottom: -2px !important;
-    transition: all 0.15s;
-}
-.stTabs [data-baseweb="tab"]:hover { color: var(--navy) !important; }
-.stTabs [aria-selected="true"] {
-    color: var(--navy) !important;
-    border-bottom-color: var(--navy) !important;
-    font-weight: 600 !important;
-}
-
-/* ── DataFrames / tables ─────────────────────────────────────────────────── */
-.stDataFrame {
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    overflow: hidden !important;
-    font-size: 12px !important;
-}
-.stDataFrame thead th {
-    background: var(--navy-light) !important;
-    color: var(--navy-dark) !important;
-    font-weight: 600 !important;
-    font-size: 11px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.04em !important;
-}
-
-/* ── Expanders ───────────────────────────────────────────────────────────── */
-details summary {
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    color: var(--navy) !important;
-}
-details {
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    padding: 0.4rem 0.8rem !important;
-    background: var(--surface) !important;
-    margin-bottom: 0.5rem !important;
-}
-
-/* ── Dividers ────────────────────────────────────────────────────────────── */
-hr { border-color: var(--border) !important; margin: 1.25rem 0 !important; }
-
-/* ── Code blocks ─────────────────────────────────────────────────────────── */
-code, pre {
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 12px !important;
-}
-.stCodeBlock {
-    border-radius: 6px !important;
-    border: 1px solid var(--border) !important;
-}
-
-/* ── Sliders ─────────────────────────────────────────────────────────────── */
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
-    background-color: var(--navy) !important;
-    border-color: var(--navy) !important;
-}
-
-/* ── Spinner / progress ──────────────────────────────────────────────────── */
-.stSpinner > div { border-top-color: var(--navy) !important; }
-
-/* ── Success/warning/error chips in caption text ─────────────────────────── */
-.stCaption { font-size: 11.5px !important; color: var(--muted) !important; }
-
-/* ── Hide Streamlit footer and app hamburger menu ────────────────────────── */
-/* Only hide the deploy toolbar and footer. Never touch sidebar controls.    */
-footer { visibility: hidden !important; height: 0 !important; }
-#MainMenu { visibility: hidden !important; }
-[data-testid="stToolbar"] { display: none !important; }
-
-/* ── Sidebar collapsed-state toggle — force always visible ───────────────── */
-/* Streamlit uses different test-ids across versions; cover all of them.     */
-/* These rules ensure the chevron button to reopen the sidebar is ALWAYS     */
-/* rendered and clickable, regardless of which version is installed.         */
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="collapsedControl"],
-button[aria-label="Open sidebar"],
-button[title="Open sidebar"],
-section[data-testid="stSidebarCollapsedControl"] {
-    display:    flex        !important;
-    visibility: visible     !important;
-    opacity:    1           !important;
-    pointer-events: auto   !important;
-    z-index: 999999         !important;
-    background: var(--navy-dark) !important;
-    border-radius: 0 8px 8px 0 !important;
-    box-shadow: 3px 2px 10px rgba(0,0,0,0.22) !important;
-    top: 1rem !important;
-}
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="collapsedControl"] button,
-button[aria-label="Open sidebar"] {
-    color: rgba(255,255,255,0.90) !important;
-    background: transparent !important;
-}
-[data-testid="stSidebarCollapsedControl"] button:hover,
-[data-testid="collapsedControl"] button:hover,
-button[aria-label="Open sidebar"]:hover {
-    color: #FFFFFF !important;
-    background: rgba(255,255,255,0.12) !important;
-}
-
-/* ── Page header accent bar ──────────────────────────────────────────────── */
-.page-header {
-    background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 100%);
-    color: white;
-    padding: 1.5rem 2rem;
-    border-radius: 8px;
-    margin-bottom: 1.5rem;
-}
-.page-header h1 { color: white !important; margin: 0 !important; font-size: 1.5rem !important; }
-.page-header p  { color: rgba(255,255,255,0.75) !important; margin: 0.3rem 0 0 !important;
-                  font-size: 13px !important; }
-
-/* ── Stat card grid ──────────────────────────────────────────────────────── */
-.stat-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
-.stat-card {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.2rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-}
-.stat-label {
-    font-size: 10.5px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.25rem;
-}
-.stat-value {
-    font-size: 1.6rem; font-weight: 600;
-    font-family: 'IBM Plex Mono', monospace;
-    color: var(--navy-dark);
-}
-.stat-sub { font-size: 11px; color: var(--muted); margin-top: 0.15rem; }
-
-/* ── Status pills ────────────────────────────────────────────────────────── */
-.pill {
-    display: inline-block;
-    padding: 2px 9px;
-    border-radius: 100px;
-    font-size: 11px;
-    font-weight: 500;
-}
-.pill-ok      { background: #E5F4F0; color: #0A7E6E; }
-.pill-warn    { background: #FEF3E2; color: #C97A0A; }
-.pill-missing { background: #F5E8E8; color: #B02A2A; }
-
-/* ── Step list (home page) ───────────────────────────────────────────────── */
-.step-list { counter-reset: steps; list-style: none; padding: 0; margin: 0; }
-.step-list li {
-    counter-increment: steps;
-    display: flex; align-items: flex-start; gap: 0.85rem;
-    padding: 0.65rem 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 13.5px;
-}
-.step-list li:last-child { border-bottom: none; }
-.step-num {
-    min-width: 26px; height: 26px;
-    background: var(--navy);
-    color: white;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 600; flex-shrink: 0;
-    font-family: 'IBM Plex Mono', monospace;
-}
-.step-text strong { color: var(--navy-dark); }
-</style>
-""", unsafe_allow_html=True)
+# ── Global CSS (single source of truth — styles.css) ─────────────────────────
+inject_css()
 
 # ── Shared session-state defaults ───────────────────────────────────────────
 DEFAULTS = {
@@ -401,6 +66,57 @@ for k, v in DEFAULTS.items():
         st.session_state[k] = v
 
 
+# ── Derived state helpers ────────────────────────────────────────────────────
+def _slides_configured() -> int:
+    return sum(1 for s in st.session_state["slides"]
+               if s["run_dir"] and Path(s["run_dir"]).exists())
+
+def _rois_saved() -> int:
+    return len(st.session_state["roi_polygons"])
+
+def _n_slides() -> int:
+    return len(st.session_state["slides"])
+
+out = Path(st.session_state["output_dir"])
+
+def _n_figs() -> int:
+    return len(list(out.glob("fig*.pdf"))) if out.exists() else 0
+
+def _pipeline_done() -> bool:
+    return st.session_state.get("pipeline_returncode") == 0
+
+def _pipeline_running() -> bool:
+    return bool(st.session_state.get("pipeline_running"))
+
+# Compute which workflow step is "current"
+# Steps: 1=setup, 2=settings, 3=roi, 4=run, 5=results
+configured = _slides_configured()
+n_slides   = _n_slides()
+n_roi      = _rois_saved()
+n_figs     = _n_figs()
+panel_ok   = Path(st.session_state["base_panel_csv"]).exists()
+
+def _current_step() -> int:
+    if not configured:
+        return 1
+    if configured and not n_roi:
+        return 3   # skip 2 (settings has sane defaults — not a blocker)
+    if n_roi and not _pipeline_done():
+        return 4
+    return 5
+
+current_step = _current_step()
+
+def _step_state(step_n: int) -> str:
+    """Return 'done', 'current', or 'pending'."""
+    done_map = {1: configured > 0, 2: True, 3: n_roi > 0, 4: _pipeline_done(), 5: n_figs > 0}
+    if done_map.get(step_n):
+        return "done"
+    if step_n == current_step:
+        return "current"
+    return "pending"
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -410,45 +126,89 @@ with st.sidebar:
             Xenium DGE
         </div>
         <div style="font-size:11px; color:rgba(255,255,255,0.55); margin-top:2px;">
-            AGED vs ADULT · MBH
+            Spatial transcriptomics pipeline
         </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.divider()
 
-    # Status block
-    def _ok(cond: bool) -> str:
-        return '<span class="pill pill-ok">✓ Ready</span>' if cond else \
-               '<span class="pill pill-missing">✗ Missing</span>'
+    # Workflow progress in sidebar
+    STEP_LABELS = [
+        "Study Setup",
+        "Settings",
+        "ROI Manager",
+        "Run Pipeline",
+        "Results",
+    ]
+    sidebar_steps_html = []
+    for i, label in enumerate(STEP_LABELS, 1):
+        state = _step_state(i)
+        if state == "done":
+            circle = '<span style="min-width:20px;height:20px;background:#0A7E6E;color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">✓</span>'
+            text_style = "color:rgba(255,255,255,0.65);"
+            label_html = label
+        elif state == "current":
+            circle = f'<span style="min-width:20px;height:20px;background:#90C8F0;color:#0F2E52;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">{i}</span>'
+            text_style = "color:#FFFFFF;font-weight:600;"
+            label_html = f"<strong>{label}</strong>"
+        else:
+            circle = f'<span style="min-width:20px;height:20px;background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.4);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;">{i}</span>'
+            text_style = "color:rgba(255,255,255,0.40);"
+            label_html = label
+        sidebar_steps_html.append(
+            f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.35rem 0;{text_style}">'
+            f'{circle}'
+            f'<span style="font-size:12px;">{label_html}</span>'
+            f'</div>'
+        )
 
-    slides_ok    = any(s["run_dir"] and Path(s["run_dir"]).exists()
-                       for s in st.session_state["slides"])
-    panel_ok     = Path(st.session_state["base_panel_csv"]).exists()
-    rois_ok      = bool(st.session_state["roi_polygons"])
-    out          = Path(st.session_state["output_dir"])
-    results_ok   = out.exists() and len(list(out.glob("fig*.pdf"))) > 0
+    st.markdown(
+        '<div style="padding:0.25rem 0;">'
+        + "\n".join(sidebar_steps_html)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    # Quick status pills
+    def _ok(cond: bool) -> str:
+        return '<span class="pill pill-ok">✓</span>' if cond else \
+               '<span class="pill pill-missing">✗</span>'
+
+    slides_ok  = configured > 0
+    rois_ok    = n_roi > 0
+    results_ok = n_figs > 0
 
     st.markdown(f"""
-    <div style="padding:0.5rem 0; font-size:12px; line-height:2.2;">
-        <div>Base panel CSV &nbsp; {_ok(panel_ok)}</div>
-        <div>Slides configured &nbsp; {_ok(slides_ok)}</div>
-        <div>ROIs defined &nbsp; {_ok(rois_ok)}</div>
-        <div>Results ready &nbsp; {_ok(results_ok)}</div>
+    <div style="font-size:11.5px; line-height:2.3;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Base panel CSV</span> {_ok(panel_ok)}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Slides configured</span> {_ok(slides_ok)}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>ROIs defined</span> {_ok(rois_ok)}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Results ready</span> {_ok(results_ok)}
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.divider()
 
-    # Pipeline indicator
-    if st.session_state.get("pipeline_running"):
+    # Pipeline run state
+    if _pipeline_running():
         st.markdown("""
         <div style="background:rgba(255,255,255,0.08); border-radius:6px;
                     padding:0.6rem 0.8rem; font-size:12px; color:rgba(255,255,255,0.9);">
             ⏳ &nbsp;<strong>Pipeline running…</strong>
         </div>
         """, unsafe_allow_html=True)
-    elif st.session_state.get("pipeline_returncode") == 0:
+    elif _pipeline_done():
         st.markdown("""
         <div style="background:rgba(10,126,110,0.25); border-radius:6px;
                     padding:0.6rem 0.8rem; font-size:12px; color:#90E4D6;">
@@ -465,25 +225,17 @@ with st.sidebar:
 
 
 # ── Home page ─────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="page-header">
-    <h1>Xenium DGE Pipeline</h1>
-    <p>Spatial transcriptomics &nbsp;·&nbsp; AGED vs ADULT mouse brain
-       &nbsp;·&nbsp; Mediobasal hypothalamus &nbsp;·&nbsp; 4 + 4 replicates</p>
-</div>
-""", unsafe_allow_html=True)
+page_header(
+    "Xenium DGE Pipeline",
+    "Spatial transcriptomics  ·  AGED vs ADULT mouse brain  ·  Mediobasal hypothalamus  ·  4 + 4 replicates",
+)
 
-# Metrics row
-configured = sum(1 for s in st.session_state["slides"]
-                 if s["run_dir"] and Path(s["run_dir"]).exists())
-n_roi      = len(st.session_state["roi_polygons"])
-n_figs     = len(list(out.glob("fig*.pdf"))) if out.exists() else 0
-
+# ── Metrics row ───────────────────────────────────────────────────────────────
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Slides configured", f"{configured} / 8")
+    st.metric("Slides configured", f"{configured} / {n_slides}")
 with col2:
-    st.metric("ROIs saved", f"{n_roi} / 8")
+    st.metric("ROIs saved", f"{n_roi} / {n_slides}")
 with col3:
     st.metric("Figures ready", n_figs)
 with col4:
@@ -493,44 +245,152 @@ with col4:
 
 st.divider()
 
-# Two-column layout: steps + feature cards
+# ── Main body: workflow steps + analysis summary ──────────────────────────────
 left, right = st.columns([3, 2], gap="large")
 
 with left:
     st.markdown("#### Workflow")
-    st.markdown("""
-<ol class="step-list">
-  <li><span class="step-num">1</span>
-      <span class="step-text"><strong>Study Setup</strong> — add the path to each of the 8 Xenium run folders and confirm gene counts</span></li>
-  <li><span class="step-num">2</span>
-      <span class="step-text"><strong>Settings</strong> — review QC thresholds, Harmony parameters, and DGE method</span></li>
-  <li><span class="step-num">3</span>
-      <span class="step-text"><strong>ROI Manager</strong> — draw the MBH boundary on each section using the interactive scatter</span></li>
-  <li><span class="step-num">4</span>
-      <span class="step-text"><strong>Run Pipeline</strong> — launch and watch the live log; a timestamped log file is saved automatically</span></li>
-  <li><span class="step-num">5</span>
-      <span class="step-text"><strong>Results</strong> — browse all 13 Nature-grade figures inline and download PDFs, CSVs, and the final AnnData</span></li>
-</ol>
-""", unsafe_allow_html=True)
+
+    STEPS = [
+        (1, "Study Setup",   "Add the path to each Xenium run folder and confirm gene counts"),
+        (2, "Settings",      "Review QC thresholds, Harmony parameters, and DGE method"),
+        (3, "ROI Manager",   "Draw the MBH boundary on each section with the interactive scatter"),
+        (4, "Run Pipeline",  "Launch and watch the live log; a timestamped log file is saved automatically"),
+        (5, "Results",       "Browse all Nature-grade figures inline; download PDFs, CSVs, and the final AnnData"),
+    ]
+
+    step_items = []
+    for step_n, title, desc in STEPS:
+        state = _step_state(step_n)
+        if state == "done":
+            num_html = (
+                '<span style="min-width:26px;height:26px;background:#0A7E6E;color:white;'
+                'border-radius:50%;display:inline-flex;align-items:center;justify-content:center;'
+                'font-size:12px;font-weight:700;flex-shrink:0;">✓</span>'
+            )
+            row_style = "opacity:0.72;"
+        elif state == "current":
+            num_html = (
+                f'<span style="min-width:26px;height:26px;background:#1B4F8A;color:white;'
+                f'border-radius:50%;display:inline-flex;align-items:center;justify-content:center;'
+                f'font-size:12px;font-weight:700;flex-shrink:0;'
+                f'box-shadow:0 0 0 3px rgba(27,79,138,0.22);">{step_n}</span>'
+            )
+            row_style = "background:rgba(27,79,138,0.04);border-radius:6px;padding-left:0.4rem;padding-right:0.4rem;"
+        else:
+            num_html = (
+                f'<span style="min-width:26px;height:26px;background:#D8DCE4;color:#8A95A3;'
+                f'border-radius:50%;display:inline-flex;align-items:center;justify-content:center;'
+                f'font-size:12px;font-weight:600;flex-shrink:0;">{step_n}</span>'
+            )
+            row_style = "opacity:0.50;"
+
+        step_items.append(
+            f'<li style="display:flex;align-items:flex-start;gap:0.85rem;'
+            f'padding:0.65rem 0;border-bottom:1px solid #D8DCE4;{row_style}">'
+            f'{num_html}'
+            f'<span style="font-size:13.5px;">'
+            f'<strong style="color:#0F2E52;">{title}</strong>'
+            f' — {desc}'
+            f'</span></li>'
+        )
+    # Remove last border
+    if step_items:
+        step_items[-1] = step_items[-1].replace("border-bottom:1px solid #D8DCE4;", "border-bottom:none;")
+
+    st.markdown(
+        '<ol style="list-style:none;padding:0;margin:0;">'
+        + "\n".join(step_items)
+        + "</ol>",
+        unsafe_allow_html=True,
+    )
+
+    # CTA: link to the current step's page
+    CTA_PAGES = {
+        1: "pages/1_study_setup.py",
+        2: "pages/2_settings.py",
+        3: "pages/3_roi_manager.py",
+        4: "pages/4_run_pipeline.py",
+        5: "pages/5_results.py",
+    }
+    CTA_LABELS = {
+        1: "→ Configure slides",
+        2: "→ Review settings",
+        3: "→ Draw ROIs",
+        4: "→ Run pipeline",
+        5: "→ View results",
+    }
+    st.markdown("<br>", unsafe_allow_html=True)
+    try:
+        st.page_link(
+            CTA_PAGES[current_step],
+            label=CTA_LABELS[current_step],
+            icon="▶",
+        )
+    except Exception:
+        # st.page_link not available in older Streamlit versions
+        st.info(f"Next step: **{STEP_LABELS[current_step - 1]}** — use the sidebar to navigate.")
+
 
 with right:
     st.markdown("#### Analysis summary")
-    st.markdown("""
-<div style="background:#FFFFFF; border:1px solid #D8DCE4; border-radius:8px;
-            padding:1rem 1.2rem; font-size:13px; line-height:1.9;">
-    <div style="display:flex; justify-content:space-between; border-bottom:1px solid #EEF0F3; padding-bottom:0.5rem; margin-bottom:0.5rem;">
-        <span style="color:#5A6474; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Parameter</span>
-        <span style="color:#5A6474; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Value</span>
-    </div>
-    <div style="display:flex; justify-content:space-between;"><span>Study design</span><strong>4 AGED + 4 ADULT</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>Base panel</span><strong>247 genes (mBrain v1.1)</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>Custom genes</span><strong>~50 / slide (partial union)</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>ROI</span><strong>Mediobasal hypothalamus</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>Batch correction</span><strong>Harmony (per slide)</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>DGE method</span><strong>Stringent Wilcoxon</strong></div>
-    <div style="display:flex; justify-content:space-between;"><span>Figures produced</span><strong>13 Nature-grade PDFs</strong></div>
-</div>
-""", unsafe_allow_html=True)
+
+    # Dynamic values from session state
+    dge_method_labels = {
+        "stringent_wilcoxon": "Stringent Wilcoxon",
+        "wilcoxon"          : "Wilcoxon rank-sum",
+        "pydeseq2"          : "PyDESeq2 pseudobulk",
+        "cside"             : "C-SIDE pseudobulk",
+        "t-test"            : "t-test",
+    }
+    dge_label   = dge_method_labels.get(st.session_state["dge_method"], st.session_state["dge_method"])
+    n_figs_disp = n_figs if n_figs > 0 else "16 (planned)"
+    panel_mode_label = {
+        "partial_union": "Partial union",
+        "intersection" : "Intersection",
+        "union"        : "Full union",
+    }.get(st.session_state["panel_mode"], st.session_state["panel_mode"])
+
+    # Unique conditions from configured slides
+    conds = sorted({s["condition"] for s in st.session_state["slides"] if s["condition"]})
+    study_design_label = " vs ".join(conds) if conds else "AGED vs ADULT"
+    n_per_cond = n_slides // max(len(conds), 1)
+
+    rows = [
+        ("Study design",    f"{n_per_cond} {' + '.join(conds)} replicates"),
+        ("Base panel",      "247 genes (mBrain v1.1)"),
+        ("Panel mode",      panel_mode_label),
+        ("ROI",             "Mediobasal hypothalamus"),
+        ("Batch correction","Harmony (per slide)"),
+        ("DGE method",      dge_label),
+        ("Figures",         f"{n_figs_disp} Nature-grade PDFs"),
+    ]
+
+    rows_html = []
+    for label, value in rows:
+        rows_html.append(
+            f'<div style="display:flex;justify-content:space-between;padding:0.28rem 0;'
+            f'border-bottom:1px solid #F0F2F5;">'
+            f'<span style="color:#5A6474;">{label}</span>'
+            f'<strong style="color:#0F2E52;text-align:right;max-width:55%;">{value}</strong>'
+            f'</div>'
+        )
+    if rows_html:
+        rows_html[-1] = rows_html[-1].replace("border-bottom:1px solid #F0F2F5;", "border-bottom:none;")
+
+    st.markdown(
+        '<div style="background:#FFFFFF;border:1px solid #D8DCE4;border-radius:8px;'
+        'padding:1rem 1.2rem;font-size:13px;">'
+        + "\n".join(rows_html)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Show a brief note if pipeline succeeded
+    if _pipeline_done():
+        st.success(f"✅ Pipeline complete — {n_figs} figures saved to `{out}`")
+    elif _pipeline_running():
+        st.info("⏳ Pipeline is running…")
 
 st.divider()
 st.markdown(

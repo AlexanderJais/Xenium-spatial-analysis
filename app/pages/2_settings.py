@@ -238,7 +238,7 @@ st.subheader("Differential gene expression")
 d1, d2, d3 = st.columns(3)
 
 with d1:
-    _methods = ["stringent_wilcoxon", "wilcoxon", "pydeseq2"]
+    _methods = ["stringent_wilcoxon", "wilcoxon", "pydeseq2", "cside"]
     _current = st.session_state["dge_method"]
     if _current not in _methods:
         _current = "stringent_wilcoxon"
@@ -250,6 +250,7 @@ with d1:
             "stringent_wilcoxon": "★ Stringent Wilcoxon (recommended)",
             "wilcoxon"          : "Wilcoxon rank-sum (permissive)",
             "pydeseq2"          : "PyDESeq2 pseudobulk (n≥8 replicates needed)",
+            "cside"             : "C-SIDE pseudobulk (spatial, multi-replicate)",
         }[x],
         help=(
             "Stringent Wilcoxon applies Wilcoxon then filters to: "
@@ -275,6 +276,13 @@ with d1:
         st.info(
             "ℹ️ PyDESeq2 is statistically correct but typically finds no "
             "significant genes at n=4 replicates per condition due to low power."
+        )
+    elif method == "cside":
+        st.info(
+            "ℹ️ **C-SIDE pseudobulk** (Cable 2022, *Nat Methods*): per-cell-type "
+            "pseudobulk aggregation by slide, then PyDESeq2. Uses real biological "
+            "replicates — the only published method designed for multi-replicate "
+            "spatial DGE. Requires `adata.layers['counts']` (raw integer counts)."
         )
 
 with d2:

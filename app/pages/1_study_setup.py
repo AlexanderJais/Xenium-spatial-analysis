@@ -33,7 +33,16 @@ for k, v in {
         st.session_state[k] = v
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-CONDITION_COLOURS = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+# Wong 2011 colour-blind-safe palette; blue first, then vermillion
+_WONG_POOL = ["#0072B2", "#D55E00", "#E69F00", "#009E73", "#CC79A7", "#56B4E9"]
+
+def _condition_colours() -> dict:
+    """Build condition → colour from the slides currently in session state."""
+    conds = sorted({s["condition"] for s in st.session_state.get("slides", []) if s["condition"]})
+    return {c: _WONG_POOL[i % len(_WONG_POOL)] for i, c in enumerate(conds)}
+
+# Keep a module-level alias updated on each render
+CONDITION_COLOURS = _condition_colours()
 
 def _xenium_dir_status(path_str: str) -> tuple[bool, str]:
     """Return (valid, message) for a Xenium run directory.

@@ -71,6 +71,9 @@ FIGURE_CATALOG = [
     ("fig11_cluster_dge",    "Per-cluster DEG bubble chart"),
     ("fig12_slide_qc",       "Per-slide QC + MBH yield"),
     ("fig13_panel_qc",       "Panel composition + custom gene overlap"),
+    ("fig14_insulin",        "Insulin pathway spatial expression"),
+    ("fig15_galanin",        "Galanin co-expression network"),
+    ("fig16_composition",    "Cell type composition (scCODA)"),
 ]
 
 # ── Page ──────────────────────────────────────────────────────────────────────
