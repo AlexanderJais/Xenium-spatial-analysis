@@ -1587,8 +1587,8 @@ def plot_neuropeptide_modules(
     gs_d = gridspec.GridSpecFromSubplotSpec(
         2, 1, subplot_spec=gs_outer[1, 1], hspace=0.35
     )
-    ax_d0 = fig.add_subplot(gs_d[0])   # spatial — cond_b (ADULT first)
-    ax_d1 = fig.add_subplot(gs_d[1])   # spatial — cond_a (AGED second)
+    ax_d0 = fig.add_subplot(gs_d[0])   # spatial — cond_a (ADULT first)
+    ax_d1 = fig.add_subplot(gs_d[1])   # spatial — cond_b (AGED second)
 
     # ── Panel A: UMAP coloured by dominant module ──────────────────────────────
     if "X_umap" in adata.obsm:
@@ -1736,7 +1736,7 @@ def plot_neuropeptide_modules(
         _MODULE_COLOURS.get(lb, "#CCCCCC") for lb in all_dom_labels
     ]
 
-    for ax_d, cond in [(ax_d0, cond_b), (ax_d1, cond_a)]:
+    for ax_d, cond in [(ax_d0, cond_a), (ax_d1, cond_b)]:
         slide_id = representative_slides.get(cond) if representative_slides else None
         if slide_id and slide_col in adata.obs.columns:
             slide_mask = (adata.obs[slide_col] == slide_id).values
