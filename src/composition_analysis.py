@@ -306,17 +306,31 @@ def _tidy_sccoda_results(results_raw: pd.DataFrame, reference_cell_type: str) ->
     scCODA returns a DataFrame with cell type as index and columns that vary
     by pertpy version. We map to:
       cell_type, log2fc, credible_interval_lo, credible_interval_hi, significant
+
+    Scale note: scCODA's Dirichlet-multinomial model stores all effect sizes
+    (beta parameters and their credible intervals) in **natural log** scale.
+    This function converts them to log₂ scale (÷ ln 2) so that results are
+    comparable with the CLR+t-test fallback and with all DGE tables.
+    Columns already named "log2fc" / "log2foldchange" are assumed to be in
+    log₂ scale and are NOT converted.
     """
     df = results_raw.copy().reset_index()
 
-    # Column name mapping (pertpy versions differ)
+    # Identify which columns carry natural-log-scale effect estimates so we
+    # can apply the ln→log2 conversion after renaming.
+    LN_SCALE_NAMES = {"effect", "final_parameter"}
+    ln_source_cols: set[str] = set()
+
     rename = {}
     for col in df.columns:
         cl = col.lower().replace(" ", "_")
         if "cell_type" in cl or col == "index":
             rename[col] = "cell_type"
-        elif cl in ("effect", "final_parameter", "log2fc", "log2foldchange"):
+        elif cl in LN_SCALE_NAMES:
             rename[col] = "log2fc"
+            ln_source_cols.add(col)
+        elif cl in ("log2fc", "log2foldchange", "log2_fold_change"):
+            rename[col] = "log2fc"   # already log2 — no conversion needed
         elif "lower" in cl or "lo_" in cl or "2.5" in cl:
             rename[col] = "credible_interval_lo"
         elif "upper" in cl or "hi_" in cl or "97.5" in cl:
@@ -325,11 +339,20 @@ def _tidy_sccoda_results(results_raw: pd.DataFrame, reference_cell_type: str) ->
             rename[col] = "significant"
     df = df.rename(columns=rename)
 
+    # Convert natural-log effect to log2.  scCODA credible intervals are
+    # always in natural log scale regardless of the effect column name.
+    ln2 = np.log(2)
+    if ln_source_cols and "log2fc" in df.columns:
+        df["log2fc"] = df["log2fc"] / ln2
+    for ci_col in ("credible_interval_lo", "credible_interval_hi"):
+        if ci_col in df.columns:
+            df[ci_col] = df[ci_col] / ln2
+
     # Ensure required columns exist with defaults
     if "cell_type" not in df.columns:
         df["cell_type"] = [str(i) for i in range(len(df))]
     if "log2fc" not in df.columns:
-        # Try computing from credible intervals midpoint if available
+        # CIs are already in log2 scale at this point (converted above)
         if "credible_interval_lo" in df.columns and "credible_interval_hi" in df.columns:
             df["log2fc"] = (df["credible_interval_lo"] + df["credible_interval_hi"]) / 2
         else:
@@ -339,7 +362,9 @@ def _tidy_sccoda_results(results_raw: pd.DataFrame, reference_cell_type: str) ->
     if "credible_interval_hi" not in df.columns:
         df["credible_interval_hi"] = np.nan
     if "significant" not in df.columns:
-        # A cell type is credibly changed if 0 is outside the credible interval
+        # A cell type is credibly changed if the credible interval excludes 0.
+        # lo > 0: interval is entirely positive (both bounds above 0).
+        # hi < 0: interval is entirely negative (both bounds below 0).
         df["significant"] = (
             (df["credible_interval_lo"] > 0) | (df["credible_interval_hi"] < 0)
         )

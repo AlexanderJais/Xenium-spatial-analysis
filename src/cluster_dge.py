@@ -131,7 +131,12 @@ def run_cluster_dge(
             )
             adata = adata[:, keep].copy()
 
-    groups = sorted(adata.obs[group_key].unique(), key=lambda x: (0, int(x)) if str(x).lstrip('-').isdigit() else (1, str(x)))
+    def _sort_key(x):
+        try:
+            return (0, int(x))
+        except (ValueError, TypeError):
+            return (1, str(x))
+    groups = sorted(adata.obs[group_key].unique(), key=_sort_key)
     conditions = adata.obs[condition_key].unique().tolist()
 
     if condition_a is None or condition_b is None:
