@@ -151,6 +151,10 @@ All figures and data files are written to the output directory you set in Study 
   fig14_insulin.pdf         Insulin / metabolic signalling gene panel across cell types
   fig15_galanin.pdf         Galanin spatial maps, split violin per cell type, log2FC lollipop
   fig16_composition.pdf     Cell type composition testing (scCODA + CLR t-test fallback)
+  fig17_neuropeptide_modules.pdf  Neuropeptide co-expression modules (AgRP/NPY, POMC/CART,
+                            KNDy, Somatostatin, TRH/Dopamine, Galanin): UMAP dominant
+                            assignment, per-cell-type z-scored heatmap, AGED vs ADULT
+                            bar comparison with Mann-Whitney significance, spatial maps
 
   global_dge_aged_vs_adult.csv    Full DGE results table
   cluster_dge_results.csv         Per-cluster DGE

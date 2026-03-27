@@ -74,6 +74,7 @@ FIGURE_CATALOG = [
     ("fig14_insulin",        "Insulin pathway spatial expression"),
     ("fig15_galanin",        "Galanin co-expression network"),
     ("fig16_composition",    "Cell type composition (scCODA)"),
+    ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
 ]
 
 # ── Page ──────────────────────────────────────────────────────────────────────

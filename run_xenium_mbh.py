@@ -718,6 +718,22 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         composition_results = None
 
     # ------------------------------------------------------------------
+    # Fig 17: Neuropeptide co-expression modules
+    # ------------------------------------------------------------------
+    try:
+        fe.plot_neuropeptide_modules(
+            adata                = adata,
+            condition_key        = "condition",
+            cell_type_key        = "cell_type",
+            representative_slides= CFG.representative_slides,
+            output_dir           = OUTPUT_DIR,
+            fmt                  = CFG.figure_format,
+            dpi                  = CFG.dpi,
+        )
+    except Exception as e:
+        logger.warning("Fig 17 (neuropeptide modules) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")

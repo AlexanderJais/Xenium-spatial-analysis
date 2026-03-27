@@ -205,6 +205,7 @@ All figures follow **Nature Publishing Group** standards:
 | fig14_insulin | Insulin/metabolic signalling gene panel across cell types |
 | fig15_galanin | Galanin (Gal): spatial maps ADULT/AGED (panels a,b), split violin per cell type (c), per-cell-type log₂FC lollipop with BH-corrected significance (d) |
 | fig16_composition | Cell type composition testing: stacked proportion bars per replicate (a), forest plot of log₂FC per cell type with credible intervals and significance (b); scCODA Bayesian model (Büttner 2021) with CLR+Welch t-test fallback |
+| fig17_neuropeptide_modules | Neuropeptide co-expression modules: UMAP coloured by dominant module (a), z-scored mean score per cell type × module heatmap (b), AGED vs ADULT grouped bar with Mann-Whitney significance (c), spatial dominant-module maps per condition (d). Modules: AgRP/NPY, POMC/CART, KNDy, Somatostatin, TRH/Dopamine, Galanin. |
 """)
 
 with tab_trouble:

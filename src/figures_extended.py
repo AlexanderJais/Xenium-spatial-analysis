@@ -1414,3 +1414,361 @@ def plot_composition_panel(
     out = _savefig(fig, output_dir / "fig16_composition", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
+
+
+# ===========================================================================
+# Figure 17: Neuropeptide co-expression modules
+# ===========================================================================
+
+# MBH neuropeptide systems — gene sets ordered by functional relevance.
+# Genes are filtered at runtime to those present in the panel.
+NEUROPEPTIDE_MODULES: dict[str, list[str]] = {
+    "AgRP/NPY\n(orexigenic)":    ["Agrp", "Npy", "Npy1r", "Npy2r", "Npy5r", "Ghsr"],
+    "POMC/CART\n(anorexigenic)": ["Pomc", "Cartpt", "Pcsk1", "Pcsk2", "Mc3r"],
+    "KNDy\n(Kiss1/Tac2/Pdyn)":   ["Kiss1", "Tac2", "Pdyn", "Tacr3", "Kiss1r"],
+    "Somatostatin":              ["Sst", "Sstr1", "Sstr2", "Sstr3", "Sstr4", "Sstr5"],
+    "TRH/Dopamine":              ["Trh", "Trhr", "Th", "Slc6a3", "Drd1", "Drd2"],
+    "Galanin\nsystem":           ["Gal", "Galr1", "Galr2", "Galr3"],
+}
+
+_MODULE_COLOURS: dict[str, str] = {
+    "AgRP/NPY\n(orexigenic)":    "#D55E00",
+    "POMC/CART\n(anorexigenic)": "#0072B2",
+    "KNDy\n(Kiss1/Tac2/Pdyn)":   "#CC79A7",
+    "Somatostatin":              "#009E73",
+    "TRH/Dopamine":              "#E69F00",
+    "Galanin\nsystem":           "#56B4E9",
+}
+
+_SCORE_THRESHOLD = 0.05   # cells below this max score are labelled "unassigned"
+
+
+def _score_neuropeptide_modules(
+    adata: ad.AnnData,
+    modules: dict[str, list[str]] = NEUROPEPTIDE_MODULES,
+) -> list[tuple[str, str, int]]:
+    """
+    Score cells for each neuropeptide module with scanpy's score_genes.
+
+    Returns
+    -------
+    List of (module_name, obs_key, n_genes_in_panel) for modules with ≥2 genes.
+    Module scores are added to adata.obs in-place.
+    """
+    import scanpy as sc
+
+    scored: list[tuple[str, str, int]] = []
+    for name, genes in modules.items():
+        present = [g for g in genes if g in adata.var_names]
+        if len(present) < 2:
+            logger.info(
+                "Neuropeptide module '%s': %d/%d genes in panel — skipping",
+                name, len(present), len(genes),
+            )
+            continue
+        # Build a safe obs-column key from the first line of the name
+        safe = name.split("\n")[0].lower()
+        for ch in "/()- ":
+            safe = safe.replace(ch, "_")
+        key = f"npmod_{safe}"
+        sc.tl.score_genes(adata, gene_list=present, score_name=key, use_raw=False)
+        scored.append((name, key, len(present)))
+        logger.info(
+            "Neuropeptide module '%s': scored %d/%d genes → obs['%s']",
+            name, len(present), len(genes), key,
+        )
+    return scored
+
+
+def plot_neuropeptide_modules(
+    adata: ad.AnnData,
+    condition_key: str = "condition",
+    cell_type_key: str = "cell_type",
+    representative_slides: Optional[dict] = None,
+    score_threshold: float = _SCORE_THRESHOLD,
+    output_dir: Optional[Path] = None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 17 — Neuropeptide co-expression modules in the ageing MBH.
+
+    Panels
+    ------
+    A (top-left):
+        UMAP coloured by dominant neuropeptide module (argmax across module
+        scores). Cells where every score ≤ score_threshold are grey
+        ("unassigned").
+    B (top-right):
+        Heatmap — mean module score per cell type × module. Rows = cell types,
+        columns = modules; each column is z-scored for visual contrast.
+    C (bottom-left):
+        Grouped bar chart — AGED vs ADULT mean module score for each module
+        across all cells. Mann-Whitney U p-values annotated above each pair.
+    D (bottom-right):
+        Spatial maps — dominant module assignment on one representative slide
+        per condition (ADULT top, AGED bottom). Grey = unassigned.
+
+    Parameters
+    ----------
+    adata:
+        AnnData with obs[condition_key], obs[cell_type_key], obsm['X_umap'],
+        obs['x_centroid'] / obs['y_centroid'] (spatial coordinates).
+    condition_key:
+        obs column for condition labels.
+    cell_type_key:
+        obs column for cell type labels (used for panel B).
+    representative_slides:
+        Dict mapping condition → slide_id for panel D.  Auto-inferred if None.
+    score_threshold:
+        Minimum per-cell maximum module score to assign a dominant module.
+    output_dir:
+        Directory to save the figure.
+    fmt / dpi:
+        Figure format and resolution.
+    """
+    import warnings as _w
+    from scipy import stats as _stats
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+
+    apply_nature_style()
+
+    # ── Score modules ──────────────────────────────────────────────────────────
+    scored = _score_neuropeptide_modules(adata)
+    if not scored:
+        logger.warning("Fig 17: no neuropeptide modules could be scored — skipping.")
+        return output_dir / f"fig17_neuropeptide_modules.{fmt}"
+
+    module_names = [s[0] for s in scored]
+    score_keys   = [s[1] for s in scored]
+    n_genes_list = [s[2] for s in scored]
+    mod_colours  = [_MODULE_COLOURS.get(n, "#888888") for n in module_names]
+
+    score_mat = adata.obs[score_keys].values.astype(float)  # (n_cells, n_modules)
+
+    # Dominant module: argmax; grey if max ≤ threshold
+    max_scores = score_mat.max(axis=1)
+    dom_idx    = score_mat.argmax(axis=1)
+    dom_idx    = np.where(max_scores > score_threshold, dom_idx, -1)  # -1 = unassigned
+
+    adata.obs["npmod_dominant"] = pd.Categorical(
+        [module_names[i] if i >= 0 else "unassigned" for i in dom_idx]
+    )
+
+    # ── Conditions ────────────────────────────────────────────────────────────
+    conditions = sorted(adata.obs[condition_key].unique().tolist())
+    cond_a, cond_b = conditions[0], conditions[-1]
+    cond_pal = {c: CONDITION_COLOURS.get(c, WONG[i]) for i, c in enumerate(conditions)}
+
+    # ── Representative slides ─────────────────────────────────────────────────
+    slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
+    if representative_slides is None:
+        representative_slides = {}
+        if slide_col is not None:
+            for cond in conditions:
+                slides = sorted(
+                    adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()
+                )
+                if slides:
+                    representative_slides[cond] = slides[0]
+
+    # ── Figure layout ─────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.85))
+    gs_outer = gridspec.GridSpec(
+        2, 2, figure=fig, wspace=0.42, hspace=0.52,
+        left=0.07, right=0.97, bottom=0.08, top=0.93,
+    )
+    ax_a = fig.add_subplot(gs_outer[0, 0])   # UMAP
+    ax_b = fig.add_subplot(gs_outer[0, 1])   # Heatmap
+    ax_c = fig.add_subplot(gs_outer[1, 0])   # Bar chart
+    # Panel D: two stacked spatial maps
+    gs_d = gridspec.GridSpecFromSubplotSpec(
+        2, 1, subplot_spec=gs_outer[1, 1], hspace=0.35
+    )
+    ax_d0 = fig.add_subplot(gs_d[0])   # spatial — cond_b (ADULT first)
+    ax_d1 = fig.add_subplot(gs_d[1])   # spatial — cond_a (AGED second)
+
+    # ── Panel A: UMAP coloured by dominant module ──────────────────────────────
+    if "X_umap" in adata.obsm:
+        umap = adata.obsm["X_umap"]
+        # Unassigned cells first (background)
+        mask_un = dom_idx < 0
+        ax_a.scatter(
+            umap[mask_un, 0], umap[mask_un, 1],
+            c="#CCCCCC", s=0.4, alpha=0.3, linewidths=0, rasterized=True,
+        )
+        legend_handles = []
+        for mi, (name, key, col) in enumerate(zip(module_names, score_keys, mod_colours)):
+            mask = dom_idx == mi
+            if mask.sum() == 0:
+                continue
+            ax_a.scatter(
+                umap[mask, 0], umap[mask, 1],
+                c=col, s=0.8, alpha=0.7, linewidths=0,
+                label=name, rasterized=True,
+            )
+            legend_handles.append(mpatches.Patch(color=col, label=name.replace("\n", " ")))
+        # Unassigned in legend
+        legend_handles.append(mpatches.Patch(color="#CCCCCC", label="unassigned"))
+        ax_a.legend(
+            handles=legend_handles, loc="upper left",
+            bbox_to_anchor=(1.02, 1.0), borderaxespad=0,
+            frameon=False, fontsize=5.5, handlelength=1.0,
+        )
+    else:
+        ax_a.text(0.5, 0.5, "UMAP not available", ha="center", va="center",
+                  fontsize=7, transform=ax_a.transAxes)
+
+    _panel_label(ax_a, "A")
+    ax_a.set_title("Dominant neuropeptide module", fontsize=7.5)
+    _clean_ax(ax_a)
+
+    # ── Panel B: Heatmap — mean score per cell type × module ──────────────────
+    use_ct = cell_type_key if cell_type_key in adata.obs.columns else condition_key
+    cell_types_present = sorted(adata.obs[use_ct].dropna().unique().tolist())
+
+    hm_data = np.zeros((len(cell_types_present), len(score_keys)))
+    for ci, ct in enumerate(cell_types_present):
+        ct_mask = adata.obs[use_ct] == ct
+        for mi, key in enumerate(score_keys):
+            hm_data[ci, mi] = adata.obs.loc[ct_mask, key].mean()
+
+    # Z-score each module column so cell types with high overall expression
+    # don't dominate the colour scale
+    with np.errstate(invalid="ignore", divide="ignore"):
+        col_std = hm_data.std(axis=0)
+        col_std[col_std == 0] = 1.0
+        hm_z = (hm_data - hm_data.mean(axis=0)) / col_std
+
+    # Short cell type labels for y-axis
+    short_ct = [ct[:18] for ct in cell_types_present]
+    short_mod = [n.split("\n")[0] for n in module_names]
+
+    im = ax_b.imshow(
+        hm_z, aspect="auto", interpolation="nearest",
+        cmap="RdBu_r", vmin=-2, vmax=2,
+    )
+    ax_b.set_xticks(np.arange(len(score_keys)))
+    ax_b.set_xticklabels(short_mod, rotation=35, ha="right", fontsize=5.5)
+    ax_b.set_yticks(np.arange(len(cell_types_present)))
+    ax_b.set_yticklabels(short_ct, fontsize=5.5)
+    ax_b.tick_params(left=False, bottom=False)
+
+    # Module colour tick marks on x-axis
+    for mi, col in enumerate(mod_colours):
+        ax_b.get_xticklabels()[mi].set_color(col)
+
+    cbar = plt.colorbar(im, ax=ax_b, fraction=0.046, pad=0.04, shrink=0.7)
+    cbar.set_label("z-score", fontsize=5.5)
+    cbar.ax.tick_params(labelsize=5)
+
+    _panel_label(ax_b, "B")
+    ax_b.set_title("Module score per cell type", fontsize=7.5)
+
+    # ── Panel C: AGED vs ADULT mean score per module ───────────────────────────
+    n_mod = len(score_keys)
+    x_pos = np.arange(n_mod)
+    bar_w = 0.35
+
+    for ci, cond in enumerate(conditions):
+        cond_mask = adata.obs[condition_key] == cond
+        means = [adata.obs.loc[cond_mask, key].mean() for key in score_keys]
+        sems  = [
+            adata.obs.loc[cond_mask, key].sem() if cond_mask.sum() > 1 else 0.0
+            for key in score_keys
+        ]
+        offset = (ci - 0.5) * bar_w
+        ax_c.bar(
+            x_pos + offset, means, bar_w,
+            color=cond_pal.get(cond, WONG[ci]),
+            yerr=sems, capsize=2, error_kw={"linewidth": 0.7},
+            label=cond, linewidth=0,
+        )
+
+    # Mann-Whitney U significance stars above each pair
+    for mi, key in enumerate(score_keys):
+        vals_a = adata.obs.loc[adata.obs[condition_key] == cond_a, key].dropna().values
+        vals_b = adata.obs.loc[adata.obs[condition_key] == cond_b, key].dropna().values
+        if len(vals_a) < 3 or len(vals_b) < 3:
+            continue
+        _, p = _stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
+        star = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
+        if star:
+            ymax = max(score_mat[:, mi].max(), 0) + 0.02
+            ax_c.text(x_pos[mi], ymax, star, ha="center", va="bottom",
+                      fontsize=6, color="#333333")
+
+    ax_c.axhline(0, color="#AAAAAA", lw=0.5, ls="--")
+    ax_c.set_xticks(x_pos)
+    ax_c.set_xticklabels(short_mod, rotation=30, ha="right", fontsize=5.5)
+    ax_c.set_ylabel("Mean module score (±SEM)", fontsize=6.5)
+    ax_c.legend(frameon=False, fontsize=6, loc="upper right")
+    _panel_label(ax_c, "C")
+    ax_c.set_title("Condition comparison per module", fontsize=7.5)
+    ax_c.tick_params(labelsize=5.5)
+
+    # ── Panel D: Spatial dominant-module maps ──────────────────────────────────
+    has_spatial = ("x_centroid" in adata.obs.columns and
+                   "y_centroid" in adata.obs.columns)
+
+    all_dom_labels = [module_names[i] if i >= 0 else "unassigned" for i in dom_idx]
+    all_dom_colours = [
+        _MODULE_COLOURS.get(lb, "#CCCCCC") for lb in all_dom_labels
+    ]
+
+    for ax_d, cond in [(ax_d0, cond_b), (ax_d1, cond_a)]:
+        slide_id = representative_slides.get(cond) if representative_slides else None
+        if slide_id and slide_col in adata.obs.columns:
+            slide_mask = (adata.obs[slide_col] == slide_id).values
+        else:
+            slide_mask = (adata.obs[condition_key] == cond).values
+
+        if not has_spatial or slide_mask.sum() == 0:
+            ax_d.text(0.5, 0.5, f"No spatial data\n({cond})",
+                      ha="center", va="center", fontsize=6,
+                      transform=ax_d.transAxes)
+            ax_d.set_aspect("equal")
+            ax_d.axis("off")
+            ax_d.set_title(cond, fontsize=6)
+            continue
+
+        x = adata.obs.loc[slide_mask, "x_centroid"].values
+        y = adata.obs.loc[slide_mask, "y_centroid"].values
+        colours_slide = np.array(all_dom_colours)[slide_mask]
+
+        ax_d.scatter(x, -y, c=colours_slide, s=1.2, alpha=0.7,
+                     linewidths=0, rasterized=True)
+        ax_d.set_aspect("equal")
+        ax_d.tick_params(left=False, bottom=False,
+                         labelleft=False, labelbottom=False)
+        ax_d.spines[["left", "bottom", "top", "right"]].set_visible(False)
+        ax_d.set_title(cond, fontsize=6, pad=2)
+
+    ax_d0.set_title(f"D   {cond_b}", loc="left" if ax_d0 is ax_d0 else "left",
+                    fontsize=7.5, fontweight="bold", pad=3)
+    _panel_label(ax_d0, "D")
+
+    # Gene-count annotation per module
+    gene_note = "  |  ".join(
+        f"{n.split(chr(10))[0]}: {k}g" for n, k in zip(module_names, n_genes_list)
+    )
+    fig.text(
+        0.5, 0.01, gene_note, ha="center", va="bottom",
+        fontsize=4.5, color="#666666",
+    )
+
+    fig.suptitle(
+        "Neuropeptide co-expression modules — AGED vs ADULT (MBH)",
+        fontsize=9, y=0.97,
+    )
+
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5, rect=[0, 0.04, 1, 0.96])
+
+    out = _savefig(fig, output_dir / "fig17_neuropeptide_modules", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out
