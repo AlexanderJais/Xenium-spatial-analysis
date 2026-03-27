@@ -104,7 +104,8 @@ if [[ -z "$CONDA_PATH" ]]; then
     ok "Downloaded: $MINIFORGE_INSTALLER ($(du -sh "$MINIFORGE_INSTALLER" | cut -f1))"
 
     log "Installing Miniforge3 to $HOME/miniforge3 …"
-    bash "$MINIFORGE_INSTALLER" -b -p "$HOME/miniforge3"
+    bash "$MINIFORGE_INSTALLER" -b -p "$HOME/miniforge3" \
+        || fail "Miniforge3 installation failed (exit code $?)."
     rm -f "$MINIFORGE_INSTALLER"
 
     CONDA_PATH="$HOME/miniforge3/bin/conda"
@@ -130,7 +131,7 @@ ok "Conda version: $(conda --version)"
 sep
 log "Setting up conda environment '${ENV_NAME}' …"
 
-if conda env list | grep -q "^${ENV_NAME} \|^${ENV_NAME}$"; then
+if conda env list | grep -q "^${ENV_NAME}[[:space:]]"; then
     warn "Environment '${ENV_NAME}' already exists."
     echo ""
     read -r -p "  Remove and recreate from scratch? [y/N]  " ans
@@ -145,7 +146,7 @@ if conda env list | grep -q "^${ENV_NAME} \|^${ENV_NAME}$"; then
     fi
 fi
 
-if ! conda env list | grep -q "^${ENV_NAME} \|^${ENV_NAME}$"; then
+if ! conda env list | grep -q "^${ENV_NAME}[[:space:]]"; then
     log "Creating environment (Python ${PYTHON_VERSION}) …"
     conda create -n "$ENV_NAME" python="${PYTHON_VERSION}" -c conda-forge -y \
         || fail "Could not create conda environment."
@@ -223,7 +224,6 @@ log "Verifying installation …"
 python - << 'PYCHECK'
 import sys
 failures = []
-optional_warn = []
 
 required = [
     ("numpy",        "numpy"),
@@ -244,9 +244,10 @@ required = [
 ]
 
 optional = [
-    ("pydeseq2",   "pydeseq2.dds",   "wilcoxon will be used as fallback"),
-    ("squidpy",    "squidpy",         "neighbourhood enrichment will be skipped"),
-    ("adjustText", "adjustText",      "volcano gene labels will overlap"),
+    ("pydeseq2",    "pydeseq2.dds",   "wilcoxon will be used as fallback"),
+    ("squidpy",     "squidpy",         "neighbourhood enrichment will be skipped"),
+    ("adjustText",  "adjustText",      "volcano gene labels will overlap"),
+    ("scikit-misc", "skmisc",          "seurat_v3 HVG flavour unavailable; use 'seurat' instead"),
 ]
 
 for label, mod in required:
