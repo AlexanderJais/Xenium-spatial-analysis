@@ -1196,3 +1196,221 @@ def plot_galanin_panel(
     out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
+
+
+# ===========================================================================
+# Fig 16: Cell type composition (scCODA / CLR + t-test)
+# ===========================================================================
+
+def plot_composition_panel(
+    composition_results: "pd.DataFrame",
+    adata: ad.AnnData,
+    cell_type_key: str = "cell_type",
+    condition_key: str = "condition",
+    replicate_key: str = "slide_id",
+    output_dir=None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 16 — Cell type composition testing panel.
+
+    Layout (double-column, 2 rows):
+      A (left)  — Stacked proportion bar chart per biological replicate,
+                  grouped by condition.
+      B (right) — Forest-plot-style lollipop showing log₂FC per cell type
+                  with 95% credible / confidence interval (from composition_results).
+                  Significant cell types highlighted in the condition-B colour.
+    """
+    import matplotlib.gridspec as gridspec
+
+    from src.figures import (
+        apply_nature_style, DOUBLE, WONG, _savefig,
+    )
+    from src.composition_analysis import _build_composition_table
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+
+    apply_nature_style()
+
+    conditions = sorted(adata.obs[condition_key].unique())
+    cond_a = conditions[0] if len(conditions) >= 1 else "A"
+    cond_b = conditions[1] if len(conditions) >= 2 else "B"
+    pal = {cond_a: WONG[5], cond_b: WONG[6]}   # blue / vermillion
+
+    # ── Build proportion table ────────────────────────────────────────────────
+    comp_df = _build_composition_table(adata, cell_type_key, replicate_key, condition_key)
+    cell_types = [c for c in comp_df.columns if c not in (condition_key, "n_cells")]
+
+    # Proportions per replicate
+    counts_mat = comp_df[cell_types].values.astype(float)
+    row_sums = counts_mat.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    props_mat = counts_mat / row_sums
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.90))
+    gs = gridspec.GridSpec(
+        1, 2, figure=fig,
+        wspace=0.45,
+        left=0.10, right=0.98, top=0.90, bottom=0.22,
+    )
+    ax_a = fig.add_subplot(gs[0])
+    ax_b = fig.add_subplot(gs[1])
+
+    # ── Panel A: stacked proportion bars ─────────────────────────────────────
+    # Use a tab20-derived palette for cell types (up to 20 types)
+    n_ct = len(cell_types)
+    import matplotlib.cm as _cm
+    ct_colors = [_cm.tab20(i / max(n_ct, 1)) for i in range(n_ct)]
+
+    # Sort replicates: condition_a first, then condition_b
+    rep_order = (
+        list(comp_df.index[comp_df[condition_key] == cond_a]) +
+        list(comp_df.index[comp_df[condition_key] == cond_b])
+    )
+    rep_order = [r for r in rep_order if r in comp_df.index]
+    props_sorted = pd.DataFrame(props_mat, index=comp_df.index, columns=cell_types).loc[rep_order]
+    cond_of_rep = comp_df[condition_key].loc[rep_order]
+
+    bottom = np.zeros(len(rep_order))
+    for i, ct in enumerate(cell_types):
+        heights = props_sorted[ct].values
+        ax_a.bar(
+            range(len(rep_order)), heights,
+            bottom=bottom,
+            color=ct_colors[i],
+            width=0.7,
+            linewidth=0,
+            label=ct,
+        )
+        bottom += heights
+
+    # Condition separator line
+    n_a = (cond_of_rep == cond_a).sum()
+    if 0 < n_a < len(rep_order):
+        ax_a.axvline(n_a - 0.5, color="#444444", lw=0.8, ls="--")
+
+    # X-ticks = replicate IDs
+    tick_labels = [str(r).replace("ADULT_", "Ad").replace("AGED_", "Ag") for r in rep_order]
+    ax_a.set_xticks(range(len(rep_order)))
+    ax_a.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=5.5)
+    ax_a.set_ylabel("Cell type proportion", fontsize=7)
+    ax_a.set_ylim(0, 1)
+    ax_a.set_title("A", loc="left", fontsize=9, fontweight="bold", pad=3)
+
+    # Condition labels above bars
+    if n_a > 0:
+        ax_a.text(
+            (n_a - 1) / 2, 1.04, cond_a, ha="center", va="bottom",
+            fontsize=6.5, color=pal[cond_a], transform=ax_a.transData,
+        )
+    if n_a < len(rep_order):
+        ax_a.text(
+            (n_a + len(rep_order) - 1) / 2, 1.04, cond_b, ha="center", va="bottom",
+            fontsize=6.5, color=pal[cond_b], transform=ax_a.transData,
+        )
+
+    # Legend: place below panel A
+    handles_a = [
+        plt.Rectangle((0, 0), 1, 1, fc=ct_colors[i], linewidth=0)
+        for i in range(n_ct)
+    ]
+    ax_a.legend(
+        handles_a, cell_types,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.30),
+        ncol=min(3, n_ct),
+        fontsize=5,
+        frameon=False,
+        handlelength=1.0,
+        handletextpad=0.4,
+        columnspacing=0.8,
+    )
+
+    # ── Panel B: forest plot (lollipop with CI) ───────────────────────────────
+    if composition_results is not None and not composition_results.empty:
+        df_b = composition_results.sort_values("log2fc").reset_index(drop=True)
+        y_pos = np.arange(len(df_b))
+
+        # CI bars
+        if "credible_interval_lo" in df_b.columns and "credible_interval_hi" in df_b.columns:
+            for i, row in df_b.iterrows():
+                lo = row.get("credible_interval_lo", np.nan)
+                hi = row.get("credible_interval_hi", np.nan)
+                if np.isfinite(lo) and np.isfinite(hi):
+                    ax_b.plot(
+                        [lo, hi], [y_pos[i], y_pos[i]],
+                        color="#BBBBBB", lw=1.2, zorder=1, solid_capstyle="round",
+                    )
+
+        # Lollipop stems
+        sig_mask = df_b["significant"].values
+        for i, (lfc, sig) in enumerate(zip(df_b["log2fc"], sig_mask)):
+            color = pal[cond_b] if sig else "#AAAAAA"
+            ax_b.plot([0, lfc], [y_pos[i], y_pos[i]], color=color, lw=0.8, zorder=2)
+
+        # Dots
+        scatter_colors = [pal[cond_b] if s else "#AAAAAA" for s in sig_mask]
+        ax_b.scatter(
+            df_b["log2fc"], y_pos,
+            c=scatter_colors, s=18, zorder=3, linewidths=0,
+        )
+
+        # Significance marker
+        for i, sig in enumerate(sig_mask):
+            if sig:
+                lfc = df_b["log2fc"].iloc[i]
+                ax_b.text(
+                    lfc + 0.08 * np.sign(lfc), y_pos[i], "✱",
+                    ha="center", va="center", fontsize=5.5, color=pal[cond_b],
+                )
+
+        # Y-axis labels
+        ax_b.set_yticks(y_pos)
+        ax_b.set_yticklabels(df_b["cell_type"].values, fontsize=5.5)
+
+        ax_b.axvline(0, color="#444444", lw=0.7, ls="-")
+        ax_b.set_xlabel(f"log₂FC ({cond_b} / {cond_a})", fontsize=7)
+
+        # Method annotation
+        method_str = df_b["method"].iloc[0] if "method" in df_b.columns else ""
+        method_label = {
+            "scCODA"  : "scCODA  (Dirichlet-multinomial, Büttner 2021)",
+            "CLR_ttest": "CLR + Welch t-test  (Aitchison 1986; scCODA fallback)",
+        }.get(method_str, method_str)
+        ax_b.text(
+            0.5, -0.16, method_label,
+            ha="center", va="top", fontsize=5,
+            color="#666666", transform=ax_b.transAxes,
+        )
+
+        n_sig = int(sig_mask.sum())
+        ax_b.set_title(
+            f"B   n={n_sig} significant cell type{'s' if n_sig != 1 else ''}",
+            loc="left", fontsize=9, fontweight="bold", pad=3,
+        )
+    else:
+        ax_b.text(
+            0.5, 0.5, "No composition results\navailable",
+            ha="center", va="center", fontsize=7, transform=ax_b.transAxes,
+        )
+        ax_b.set_title("B", loc="left", fontsize=9, fontweight="bold", pad=3)
+
+    fig.suptitle(
+        "Cell type composition — AGED vs ADULT (MBH)",
+        fontsize=9, y=0.97,
+    )
+
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5, rect=[0, 0.05, 1, 0.96])
+
+    out = _savefig(fig, output_dir / "fig16_composition", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out

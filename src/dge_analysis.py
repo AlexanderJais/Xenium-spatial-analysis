@@ -647,10 +647,19 @@ def run_dge(
             cell_type=cell_type,
             **{**_sw_kwargs, **kwargs},   # merge back any remaining kwargs
         )
+    elif method == "cside":
+        result = cside_pseudobulk_dge(
+            adata,
+            condition_key=condition_key,
+            condition_a=condition_a,
+            condition_b=condition_b,
+            replicate_key=_replicate_key,
+            cell_type_key=cell_type_key or "cell_type",
+        )
     else:
         raise ValueError(
             f"Unknown DGE method: {method}. "
-            "Choose pydeseq2, wilcoxon, stringent_wilcoxon or t-test."
+            "Choose pydeseq2, cside, wilcoxon, stringent_wilcoxon or t-test."
         )
 
     # Normalise column names to a single canonical schema so all downstream
@@ -764,3 +773,187 @@ def _split_pseudobulk(
     bulk_df = pd.DataFrame(rows)
     sample_meta = pd.DataFrame(meta_rows).set_index("sample")
     return bulk_df, sample_meta
+
+
+# ===========================================================================
+# C-SIDE pseudobulk DGE (Cable et al. 2022, Nat Methods 19:1076)
+# ===========================================================================
+
+def cside_pseudobulk_dge(
+    adata: ad.AnnData,
+    cell_type_key: str = "cell_type",
+    condition_key: str = "condition",
+    replicate_key: str = "slide_id",
+    condition_a: Optional[str] = None,
+    condition_b: Optional[str] = None,
+    min_cells_per_sample: int = 5,
+    min_total_counts: int = 10,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """
+    C-SIDE-inspired per-cell-type pseudobulk DGE for multi-replicate Xenium.
+
+    For each cell type, cells are aggregated (summed) per biological replicate
+    (slide) to form a pseudobulk count matrix, then PyDESeq2 is run using the
+    real biological replicates as samples.
+
+    This is the multi-replicate spatial DGE approach introduced by Cable et al.
+    2022 (C-SIDE, Nat Methods 19:1076). For Xenium (single-cell resolution,
+    no spot mixing), the implementation reduces to per-cell-type pseudobulk
+    DESeq2, which matches the C-SIDE recommendation for datasets where cell
+    type identities are known per observation.
+
+    Parameters
+    ----------
+    adata:
+        AnnData; raw counts must be in ``.layers['counts']``.
+    cell_type_key:
+        obs column with cell type labels.
+    condition_key:
+        obs column with condition labels.
+    replicate_key:
+        obs column with biological replicate labels (e.g. 'slide_id').
+    condition_a / condition_b:
+        The two conditions. Auto-inferred if None.
+    min_cells_per_sample:
+        Pseudobulk samples with fewer cells are excluded.
+    min_total_counts:
+        Genes with fewer summed counts across all samples are excluded.
+    random_state:
+        RNG seed (not used directly here but kept for API consistency).
+
+    Returns
+    -------
+    Long-format DataFrame (same schema as run_cluster_dge output):
+        group, gene, log2fc, pval_adj, baseMean, ...
+    sorted by group then padj.
+    """
+    try:
+        from pydeseq2.dds import DeseqDataSet
+        from pydeseq2.ds import DeseqStats
+    except ImportError:
+        raise ImportError(
+            "pydeseq2 is required for C-SIDE pseudobulk DGE. "
+            "Install with: pip install pydeseq2"
+        )
+
+    if cell_type_key not in adata.obs.columns:
+        raise KeyError(f"cell_type_key='{cell_type_key}' not in adata.obs")
+    if replicate_key not in adata.obs.columns:
+        raise KeyError(
+            f"replicate_key='{replicate_key}' not in adata.obs. "
+            "C-SIDE requires real biological replicates."
+        )
+
+    cond_a, cond_b = _resolve_conditions(adata, condition_key, condition_a, condition_b)
+
+    # Exclude zero-filled custom genes (structural zeros corrupt pseudobulk sums)
+    if "zero_filled" in adata.var.columns:
+        keep_genes = ~adata.var["zero_filled"].fillna(False)
+        n_excl = int((~keep_genes).sum())
+        if n_excl > 0:
+            logger.info(
+                "C-SIDE: excluding %d zero-filled custom gene(s) from testing.", n_excl
+            )
+            adata = adata[:, keep_genes].copy()
+
+    X_counts = _get_counts(adata)
+    cell_types = sorted(adata.obs[cell_type_key].astype(str).unique())
+
+    all_results = []
+
+    for ct in cell_types:
+        ct_mask = adata.obs[cell_type_key].astype(str) == ct
+        sub_obs = adata.obs[ct_mask]
+        sub_X = X_counts[ct_mask]
+
+        # Count cells per (condition, replicate)
+        n_a = (sub_obs[condition_key] == cond_a).sum()
+        n_b = (sub_obs[condition_key] == cond_b).sum()
+        if n_a < min_cells_per_sample or n_b < min_cells_per_sample:
+            logger.info(
+                "C-SIDE: skipping cell type '%s' (n_%s=%d, n_%s=%d)",
+                ct, cond_a, n_a, cond_b, n_b,
+            )
+            continue
+
+        # Pseudobulk: sum counts per (condition, replicate)
+        bulk_df, sample_meta = _aggregate_by_replicate(
+            sub_X, sub_obs, condition_key, replicate_key, adata.var_names
+        )
+
+        # Filter low-count samples and genes
+        sample_meta = sample_meta[sample_meta["n_cells"] >= min_cells_per_sample]
+        bulk_df = bulk_df.loc[sample_meta.index]
+
+        gene_mask = bulk_df.sum(axis=0) >= min_total_counts
+        bulk_df = bulk_df.loc[:, gene_mask]
+
+        if bulk_df.shape[0] < 4:
+            logger.warning(
+                "C-SIDE: cell type '%s' has only %d samples after filtering "
+                "(need >= 4 for DESeq2). Skipping.",
+                ct, bulk_df.shape[0],
+            )
+            continue
+
+        if bulk_df.shape[1] == 0:
+            logger.info("C-SIDE: cell type '%s' — no genes passed count filter.", ct)
+            continue
+
+        logger.info(
+            "C-SIDE: cell type '%s': %d samples × %d genes",
+            ct, bulk_df.shape[0], bulk_df.shape[1],
+        )
+
+        try:
+            dds = DeseqDataSet(
+                counts=bulk_df,
+                metadata=sample_meta,
+                design_factors=condition_key,
+                ref_level=[condition_key, cond_a],
+                refit_cooks=True,
+                quiet=True,
+            )
+            dds.deseq2()
+
+            stat_res = DeseqStats(dds, contrast=[condition_key, cond_b, cond_a], quiet=True)
+            stat_res.summary()
+
+            # LFC shrinkage
+            try:
+                avail = list(dds.LFC.columns)
+            except AttributeError:
+                avail = []
+            expected = f"{condition_key}_{cond_b}_vs_{cond_a}"
+            coeff = next((c for c in avail if c == expected), None) or \
+                    next((c for c in avail if c.lower() == expected.lower()), None)
+            if coeff:
+                stat_res.lfc_shrink(coeff=coeff)
+
+            res = (
+                stat_res.results_df
+                .reset_index()
+                .rename(columns={"index": "gene", "log2FoldChange": "log2fc", "padj": "pval_adj"})
+                .sort_values("pval_adj")
+            )
+            res.insert(0, "group", ct)
+            res["method"] = "cside_pseudobulk"
+            all_results.append(res)
+
+        except Exception as exc:
+            logger.warning("C-SIDE DESeq2 failed for cell type '%s': %s", ct, exc)
+            continue
+
+    if not all_results:
+        logger.warning("C-SIDE: no cell types produced results.")
+        return pd.DataFrame()
+
+    combined = pd.concat(all_results, ignore_index=True)
+    logger.info(
+        "C-SIDE complete: %d cell types, %d gene-tests, %d significant (padj < 0.05)",
+        combined["group"].nunique(),
+        len(combined),
+        (combined["pval_adj"] < 0.05).sum(),
+    )
+    return combined

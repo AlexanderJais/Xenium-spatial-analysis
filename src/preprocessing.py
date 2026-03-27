@@ -271,6 +271,13 @@ def normalise_and_select_hvg(
     if "counts" in adata.layers:
         adata.X = adata.layers["counts"].copy()
 
+    # Preserve raw counts before any normalisation.  Required by pseudobulk
+    # DESeq2 (pseudobulk_deseq2) and C-SIDE (cside_pseudobulk_dge) which need
+    # integer counts.  The layer is saved here regardless of whether counts
+    # was already in layers so it is always available after this function.
+    if "counts" not in adata.layers:
+        adata.layers["counts"] = adata.X.copy()
+
     run_hvg = (n_top_genes > 0) and (n_top_genes < adata.n_vars)
 
     if not run_hvg:

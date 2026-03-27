@@ -678,6 +678,45 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         logger.warning("Fig 15 (galanin panel) failed: %s", e)
 
     # ------------------------------------------------------------------
+    # Fig 16: Cell type composition testing (scCODA)
+    # ------------------------------------------------------------------
+    if getattr(CFG, "run_sccoda", True) and "cell_type" in adata.obs.columns:
+        logger.info("Step 9b: Cell type composition testing (scCODA) …")
+        try:
+            from src.composition_analysis import run_sccoda
+            composition_results = run_sccoda(
+                adata,
+                cell_type_key         = "cell_type",
+                condition_key         = "condition",
+                replicate_key         = "slide_id",
+                reference_cell_type   = getattr(CFG, "sccoda_reference_cell_type", "auto"),
+                n_mcmc_samples        = getattr(CFG, "sccoda_n_mcmc_samples", 20_000),
+                output_dir            = OUTPUT_DIR,
+            )
+            logger.info(
+                "Composition testing complete: %d cell types, %d significant",
+                len(composition_results),
+                composition_results["significant"].sum() if not composition_results.empty else 0,
+            )
+
+            fe.plot_composition_panel(
+                composition_results = composition_results,
+                adata               = adata,
+                cell_type_key       = "cell_type",
+                condition_key       = "condition",
+                replicate_key       = "slide_id",
+                output_dir          = OUTPUT_DIR,
+                fmt                 = CFG.figure_format,
+                dpi                 = CFG.dpi,
+            )
+        except Exception as e:
+            logger.warning("Fig 16 (composition panel) failed: %s", e)
+            composition_results = None
+    else:
+        logger.info("Fig 16 skipped (run_sccoda=False or no cell_type annotation).")
+        composition_results = None
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
@@ -793,6 +832,7 @@ def _print_figure_index(out: Path):
         ("fig13_panel_qc",        "Panel composition + custom gene overlap QC"),
         ("fig14_insulin_signalling", "Insulin & metabolic signalling panel"),
         ("fig15_galanin",           "Galanin (Gal) expression across cell types"),
+        ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
     ]
     for name, desc in table:
         f = out / f"{name}.pdf"

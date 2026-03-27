@@ -44,7 +44,7 @@ Or right-click → Get Info → copy the *Where* path.
 Check **⚙️ Pipeline Settings**. The defaults are sensible for an MBH study.
 Key decisions:
 - **Panel mode:** `partial_union` (recommended) keeps base genes + shared custom genes
-- **DGE method:** `stringent_wilcoxon` (default, recommended); `wilcoxon` for speed; `pydeseq2` requires n≥8 replicates
+- **DGE method:** `stringent_wilcoxon` (default, recommended); `wilcoxon` for speed; `pydeseq2` for pseudobulk; `cside` for per-cell-type pseudobulk DESeq2 (Cable 2022, recommended for publication)
 - **min_slides:** How many slides a custom gene must appear in to be retained (default 2)
 
 ### 3 — ROI Manager
@@ -165,7 +165,7 @@ the biological AGED vs ADULT signal.
 ### DGE
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| dge_method | stringent_wilcoxon | `stringent_wilcoxon` (recommended), `wilcoxon`, or `pydeseq2` (pseudobulk) |
+| dge_method | stringent_wilcoxon | `stringent_wilcoxon` (recommended), `wilcoxon`, `pydeseq2` (pseudobulk), or `cside` (per-cell-type pseudobulk DESeq2, Cable 2022) |
 | log2fc_threshold | 1.0 | Minimum |log₂FC| for significance (stringent_wilcoxon uses this) |
 | pval_threshold | 0.01 | Adjusted p-value threshold (stringent_wilcoxon uses this) |
 
@@ -204,6 +204,7 @@ All figures follow **Nature Publishing Group** standards:
 | fig13_panel_qc | Panel composition bars + custom gene presence heatmap + UpSet histogram |
 | fig14_insulin | Insulin/metabolic signalling gene panel across cell types |
 | fig15_galanin | Galanin (Gal): spatial maps ADULT/AGED (panels a,b), split violin per cell type (c), per-cell-type log₂FC lollipop with BH-corrected significance (d) |
+| fig16_composition | Cell type composition testing: stacked proportion bars per replicate (a), forest plot of log₂FC per cell type with credible intervals and significance (b); scCODA Bayesian model (Büttner 2021) with CLR+Welch t-test fallback |
 """)
 
 with tab_trouble:
