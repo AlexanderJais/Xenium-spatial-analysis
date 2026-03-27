@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environments
+.env
+.venv
+venv/
+xenium_dge/
+
+# Cache directories
+.cache_mbh/
+roi_cache/
+
+# Output data
+*.h5ad
+*.h5
+
+# Figures output (keep structure, ignore generated files)
+outputs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+*.command
+
+# IDE
+.vscode/
+.idea/
+
+# Zip (source is now extracted)
+xenium_dge_pipeline.zip
