@@ -702,7 +702,7 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
     n_cells = [( adata.obs["slide_id"] == s).sum() for s in slides]
     ax1.bar(x_pos, n_cells, color=colours, width=0.6, linewidth=0)
     ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(slides, rotation=45, ha="right", fontsize=5.5)
+    ax1.set_xticklabels(slides, rotation=45, ha="right", fontsize=6)
     ax1.set_ylabel("Cells in MBH ROI")
     ax1.set_title("Cells per slide")
 
@@ -715,7 +715,7 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
     ]
     ax2.bar(x_pos, med_counts, color=colours, width=0.6, linewidth=0)
     ax2.set_xticks(x_pos)
-    ax2.set_xticklabels(slides, rotation=45, ha="right", fontsize=5.5)
+    ax2.set_xticklabels(slides, rotation=45, ha="right", fontsize=6)
     ax2.set_ylabel("Median total counts")
     ax2.set_title("Transcript yield")
 

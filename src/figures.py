@@ -325,7 +325,7 @@ def plot_umap(
         plt.close(fig)
         return out
     # Extra right margin so the cluster legend sits outside panel B
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE * 1.15, 2.8),
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE, 2.8),
                              gridspec_kw={"wspace": 0.08})
     umap = adata.obsm["X_umap"]
 
@@ -366,7 +366,7 @@ def plot_umap(
     axes[1].set_xlabel(""); axes[1].set_ylabel("")
     axes[1].set_title("Leiden clusters", fontsize=8)
     leg2 = axes[1].legend(
-        markerscale=6, frameon=False, fontsize=5.5,
+        markerscale=6, frameon=False, fontsize=6,
         handletextpad=0.3, ncol=2,
         title="Cluster", title_fontsize=6,
         loc="upper left",
@@ -485,9 +485,9 @@ def plot_spatial_clusters(
                    linewidths=0, rasterized=True)
         ax.set_title(title, fontsize=6.5)
         ax.set_aspect("equal")
-        ax.set_xlabel("x (µm)", fontsize=5.5)
-        ax.set_ylabel("y (µm)", fontsize=5.5)
-        ax.tick_params(labelsize=4.5)
+        ax.set_xlabel("x (µm)", fontsize=6)
+        ax.set_ylabel("y (µm)", fontsize=6)
+        ax.tick_params(labelsize=6)
 
     # ── Figure A: all slides (grid: rows=conditions, cols=slides per condition) ──
     if slide_col is not None:
@@ -665,7 +665,7 @@ def plot_dotplot(
                        edgecolors="0.5", zorder=2)
 
     ax.set_xticks(range(n_genes))
-    ax.set_xticklabels(uniq_genes, rotation=90, fontsize=5, style="italic")
+    ax.set_xticklabels(uniq_genes, rotation=90, fontsize=6, style="italic")
     ax.set_yticks(range(n_clust))
     # Use descriptive cell type labels if available, otherwise "Cluster N"
     if "cell_type" in adata.obs.columns:
@@ -688,18 +688,19 @@ def plot_dotplot(
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, shrink=0.4, aspect=15, pad=0.02)
     cbar.set_label("Mean expression", fontsize=6)
-    cbar.ax.tick_params(labelsize=5, width=0.4, length=2)
+    cbar.ax.tick_params(labelsize=6, width=0.4, length=2)
 
-    # Size legend
+    # Size legend — placed below the x-axis so it never conflicts with the colorbar
     for pct, lab in [(0.25, "25%"), (0.5, "50%"), (1.0, "100%")]:
         ax.scatter([], [], s=(pct * 8) ** 2, c="0.5",
                    linewidths=0.2, edgecolors="0.5",
                    label=lab)
     ax.legend(
-        title="Fraction\nexpressing",
-        title_fontsize=5, fontsize=5,
-        loc="upper left",
-        bbox_to_anchor=(1.08, 1.0),
+        title="Fraction expressing",
+        title_fontsize=6, fontsize=6,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.18),
+        ncol=3,
         frameon=False,
         scatterpoints=1,
     )
@@ -804,7 +805,7 @@ def _label_points(ax, df, xcol, ycol, gene_col):
         for _, row in df.iterrows():
             t = ax.text(
                 row[xcol], row[ycol], row[gene_col],
-                fontsize=4.5, style="italic",
+                fontsize=5.5, style="italic",
                 va="bottom", ha="center",
             )
             texts.append(t)
@@ -819,7 +820,7 @@ def _label_points(ax, df, xcol, ycol, gene_col):
             ax.text(
                 row[xcol] + 0.03, row[ycol] + 0.1,
                 row[gene_col],
-                fontsize=4.5, style="italic",
+                fontsize=5.5, style="italic",
                 va="bottom",
                 path_effects=[
                     patheffects.withStroke(linewidth=0.6, foreground="white")
@@ -916,7 +917,7 @@ def plot_dge_heatmap(
     )
     axes[0].set_xticks([])
     axes[0].set_yticks([0])
-    axes[0].set_yticklabels(["Condition"], fontsize=5)
+    axes[0].set_yticklabels(["Condition"], fontsize=6)
     axes[0].spines[:].set_visible(False)
 
     # Heatmap
@@ -928,18 +929,18 @@ def plot_dge_heatmap(
         interpolation="nearest",
     )
     axes[1].set_yticks(range(len(top_genes)))
-    axes[1].set_yticklabels(top_genes, fontsize=4.5, style="italic")
+    axes[1].set_yticklabels(top_genes, fontsize=5.5, style="italic")
     axes[1].set_xticks([])
     axes[1].set_xlabel(f"Cells (n = {len(cell_idx)})", fontsize=6)
 
     cbar = fig.colorbar(im, ax=axes[1], shrink=0.4, aspect=15, pad=0.02)
-    cbar.set_label("Z-score", fontsize=5)
-    cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
+    cbar.set_label("Z-score", fontsize=6)
+    cbar.ax.tick_params(labelsize=5, width=0.4, length=1.5)
 
     # Legend
     handles = [mpatches.Patch(color=CONDITION_COLOURS.get(c, WONG[i]), label=c)
                for i, c in enumerate(conditions)]
-    fig.legend(handles=handles, loc="upper right", fontsize=5,
+    fig.legend(handles=handles, loc="upper right", fontsize=6,
                frameon=False, bbox_to_anchor=(1.0, 0.98))
 
     fig.suptitle("Top DGE genes", fontsize=8, y=1.01)
@@ -1126,14 +1127,14 @@ def plot_spatial_expression(
                 if sc is not None:
                     last_sc = sc
                 if col == 0:
-                    ax.set_ylabel(gene, fontsize=5, style="italic", rotation=0,
+                    ax.set_ylabel(gene, fontsize=6, style="italic", rotation=0,
                                   labelpad=35, va="center", color="#DDDDDD")
             if last_sc is not None:
                 _add_cbar(fig_a, last_sc, list(axes_a[row, :]), gene,
-                          fontsize_label=4.5, fontsize_tick=4)
+                          fontsize_label=5.5, fontsize_tick=5)
 
         fig_a.suptitle("Spatial expression of top DGE genes — all slides",
-                       fontsize=7, color="#EEEEEE")
+                       fontsize=8, color="#EEEEEE")
         fig_a.tight_layout(pad=0.3)
         _savefig(fig_a, output_dir / "fig7_spatial_expr_all", fmt=fmt, dpi=dpi)
         plt.close(fig_a)
@@ -1217,8 +1218,8 @@ def plot_summary_panel(
     ax_a.set_title("Leiden clusters", fontsize=8)
     # Compact legend: cluster ID only (cell-type labels go on the composition bar)
     leg_a = ax_a.legend(
-        markerscale=4, frameon=False, fontsize=4,
-        ncol=2, title="Cluster", title_fontsize=5,
+        markerscale=4, frameon=False, fontsize=5.5,
+        ncol=2, title="Cluster", title_fontsize=6,
         loc="upper left", bbox_to_anchor=(1.01, 1.0), borderaxespad=0,
     )
     for h in leg_a.legend_handles:
@@ -1271,7 +1272,7 @@ def plot_summary_panel(
     ]
     leg_b = ax_b.legend(
         handles=handles_b,
-        frameon=False, fontsize=4,
+        frameon=False, fontsize=5.5,
         ncol=1, loc="upper left",
         bbox_to_anchor=(1.01, 1.0), borderaxespad=0,
     )

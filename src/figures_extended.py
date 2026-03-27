@@ -109,7 +109,7 @@ def plot_cell_type_panel(
 
     # Layout: 2x2 grid. A=top-left, B=top-right, C=bottom-left, D=bottom-right
     # Extra right margin to accommodate the legend placed outside panel A.
-    fig = plt.figure(figsize=(DOUBLE * 1.2, DOUBLE * 0.75))
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.75))
     gs = gridspec.GridSpec(2, 2, figure=fig, wspace=0.38, hspace=0.48)
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1])
@@ -135,7 +135,7 @@ def plot_cell_type_panel(
         ax_a.set_title("Cell types (UMAP)", fontsize=7.5)
         _clean_ax(ax_a)
         leg = ax_a.legend(
-            markerscale=6, frameon=False, fontsize=4.5,
+            markerscale=6, frameon=False, fontsize=5.5,
             ncol=1,
             loc="upper left",
             bbox_to_anchor=(1.02, 1.0),   # outside the axes, right side
@@ -173,9 +173,9 @@ def plot_cell_type_panel(
                    c=colours, s=spot_size, alpha=0.75,
                    linewidths=0, rasterized=True)
         ax.set_aspect("equal")
-        ax.set_xlabel("x (µm)", fontsize=5.5)
-        ax.set_ylabel("y (µm)", fontsize=5.5)
-        ax.tick_params(labelsize=5)
+        ax.set_xlabel("x (µm)", fontsize=6)
+        ax.set_ylabel("y (µm)", fontsize=6)
+        ax.tick_params(labelsize=6)
         ax.set_title(title, fontsize=7)
 
     # ── B: Representative ADULT section ─────────────────────────────────────
@@ -215,7 +215,7 @@ def plot_cell_type_panel(
 
     fig.suptitle("Cell type annotation", fontsize=9, y=1.01)
     # rect leaves the right margin free for the legend outside panel A
-    fig.tight_layout(pad=0.4, rect=[0, 0, 0.93, 1])
+    fig.tight_layout(pad=0.4, rect=[0, 0, 0.88, 1])
     out = _savefig(fig, output_dir / "fig9_cell_types", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
@@ -276,7 +276,7 @@ def plot_spatial_stats(
     ax.scatter(df["morans_i"], y_pos, c=colours, s=8, zorder=3, linewidths=0)
     ax.axvline(0, color="black", lw=0.4)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(df["gene"].values, fontsize=4.5, style="italic")
+    ax.set_yticklabels(df["gene"].values, fontsize=6, style="italic")
     ax.set_xlabel("Moran's I")
     ax.set_title(f"Top {n_top_genes} spatially variable genes")
 
@@ -285,7 +285,7 @@ def plot_spatial_stats(
         mpatches.Patch(color="#D55E00", label="adj-p < 0.05"),
         mpatches.Patch(color="#AAAAAA", label="ns"),
     ]
-    ax.legend(handles=handles, frameon=False, fontsize=5, loc="lower right")
+    ax.legend(handles=handles, frameon=False, fontsize=6, loc="lower right")
     _panel_label(ax, chr(ord("a") + panel_idx))
     panel_idx += 1
 
@@ -293,7 +293,7 @@ def plot_spatial_stats(
     if coexpr_matrix is not None and panel_idx < len(axes):
         ax = axes[panel_idx]
         n_genes = len(coexpr_matrix)
-        font_s = max(3, 7 - n_genes // 5)
+        font_s = max(5, 7 - n_genes // 5)
         mask = np.eye(n_genes, dtype=bool)
         vmax = np.abs(coexpr_matrix.values[~mask]).max() or 1
         im = ax.imshow(
@@ -307,8 +307,8 @@ def plot_spatial_stats(
         ax.set_yticks(range(n_genes))
         ax.set_yticklabels(coexpr_matrix.index, fontsize=font_s, style="italic")
         cbar = fig.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.02)
-        cbar.set_label("Spatial lag\ncorrelation", fontsize=5)
-        cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
+        cbar.set_label("Spatial lag\ncorrelation", fontsize=6)
+        cbar.ax.tick_params(labelsize=5, width=0.4, length=1.5)
         ax.set_title("Spatial co-expression")
         _panel_label(ax, chr(ord("a") + panel_idx))
         panel_idx += 1
@@ -335,14 +335,14 @@ def plot_spatial_stats(
                     ax.text(j, i, "*", ha="center", va="center",
                             fontsize=6, color="black")
 
-        font_s = max(4, 6 - n_ct // 4)
+        font_s = max(5, 7 - n_ct // 4)
         ax.set_xticks(range(n_ct))
         ax.set_xticklabels(labels, rotation=90, fontsize=font_s)
         ax.set_yticks(range(n_ct))
         ax.set_yticklabels(labels, fontsize=font_s)
         cbar = fig.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.02)
-        cbar.set_label("z-score", fontsize=5)
-        cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
+        cbar.set_label("z-score", fontsize=6)
+        cbar.ax.tick_params(labelsize=5, width=0.4, length=1.5)
         ax.set_title("Neighbourhood enrichment\n(* p < 0.05)")
         _panel_label(ax, chr(ord("a") + panel_idx))
 
@@ -396,10 +396,14 @@ def plot_cluster_dge(
     groups = cluster_dge["group"].unique().tolist()
     n_groups = len(groups)
 
-    # Figure width: panel A is a narrow bar chart; panel B (bubble) gets 3x the space.
-    # No panel C — the shared-DEGs heatmap is removed to give panel B maximum room.
-    fig_w = DOUBLE * 2.2          # ~twice the standard double-column width
-    fig_h = max(4.5, n_groups * 0.28 + 2.0)  # scale height with number of clusters
+    # Pre-compute top genes so we can scale figure height to both groups and genes.
+    # Panel A is a narrow bar chart; panel B (bubble) gets 3× the width.
+    # Figure stays at Nature double-column width (7.2") and scales taller instead.
+    from src.cluster_dge import top_genes_per_group as _tgpg
+    _top_pre = _tgpg(cluster_dge, n=n_top_per_cluster, direction="both")
+    n_genes_est = len(_top_pre["gene"].unique()) if not _top_pre.empty else 1
+    fig_w = DOUBLE
+    fig_h = max(4.5, max(n_groups * 0.30, n_genes_est * 0.22) + 1.5)
 
     fig = plt.figure(figsize=(fig_w, fig_h))
     # GridSpec: A gets 1 unit, B gets 3 units width; tight gap between them
@@ -428,12 +432,11 @@ def plot_cluster_dge(
     ax_a.set_yticklabels([str(g) for g in groups], fontsize=6)
     ax_a.set_xlabel("Number of DEGs")
     ax_a.set_title("DEGs per group")
-    ax_a.legend(frameon=False, fontsize=5.5, loc="lower right")
+    ax_a.legend(frameon=False, fontsize=6, loc="lower right")
     _panel_label(ax_a, "a")
 
     # --- B: Bubble chart (gene x cluster) — takes all remaining width ---
-    from src.cluster_dge import top_genes_per_group
-    top = top_genes_per_group(cluster_dge, n=n_top_per_cluster, direction="both")
+    top = _top_pre  # already computed above for figure sizing
 
     if not top.empty:
         genes_ordered = (
@@ -467,7 +470,7 @@ def plot_cluster_dge(
         ax_b.set_xticks(range(len(groups)))
         ax_b.set_xticklabels([str(g) for g in groups], rotation=90, fontsize=6)
         ax_b.set_yticks(range(len(genes_ordered)))
-        ax_b.set_yticklabels(genes_ordered, fontsize=5.5, style="italic")
+        ax_b.set_yticklabels(genes_ordered, fontsize=6, style="italic")
         ax_b.set_xlim(-0.7, len(groups) - 0.3)
         ax_b.set_ylim(-0.7, len(genes_ordered) - 0.3)
         ax_b.grid(True, color="0.92", linewidth=0.35, zorder=0)
@@ -477,8 +480,8 @@ def plot_cluster_dge(
         sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax_b, shrink=0.5, pad=0.02, aspect=15)
-        cbar.set_label("log$_2$FC", fontsize=5.5)
-        cbar.ax.tick_params(labelsize=5, width=0.4, length=2)
+        cbar.set_label("log$_2$FC", fontsize=6)
+        cbar.ax.tick_params(labelsize=5.5, width=0.4, length=2)
         cbar.outline.set_linewidth(0.4)
 
     _panel_label(ax_b, "b")
@@ -631,7 +634,7 @@ def plot_insulin_panel(
 
     ax_a.axvline(0, color="black", lw=0.5, zorder=2)
     ax_a.set_yticks(y_pos)
-    ax_a.set_yticklabels(gene_order, fontsize=5, style="italic")
+    ax_a.set_yticklabels(gene_order, fontsize=6, style="italic")
     ax_a.set_xlabel("log₂FC (AGED vs ADULT)", fontsize=7)
     ax_a.set_title("Insulin & metabolic signalling genes — global AGED vs ADULT", fontsize=8)
 
@@ -648,7 +651,7 @@ def plot_insulin_panel(
         mpatches.Patch(color=col, label=grp.replace("\n", " "))
         for grp, col in _GROUP_COLOURS.items()
     ]
-    ax_a.legend(handles=legend_handles, frameon=False, fontsize=5,
+    ax_a.legend(handles=legend_handles, frameon=False, fontsize=6,
                 loc="lower right", ncol=2)
 
     # Group bracket lines on the y-axis
@@ -664,7 +667,7 @@ def plot_insulin_panel(
                       textcoords=("axes fraction", "data"),
                       arrowprops=dict(arrowstyle="-", color=_GROUP_COLOURS[grp], lw=2))
         ax_a.text(-0.235, (y_start + y_end) / 2,
-                  grp.replace("\n", " "), fontsize=4.5, color=_GROUP_COLOURS[grp],
+                  grp.replace("\n", " "), fontsize=5.5, color=_GROUP_COLOURS[grp],
                   ha="right", va="center", rotation=0,
                   transform=ax_a.get_yaxis_transform())
         cumulative += n
@@ -722,10 +725,10 @@ def plot_insulin_panel(
         [ct.replace("GABAergic neuron", "GABA").replace("Glutamatergic neuron", "Glut")
            .replace(" neuron", "").replace("(", "").replace(")","")
          for ct in cell_types],
-        rotation=60, ha="right", fontsize=4,
+        rotation=60, ha="right", fontsize=5.5,
     )
     ax_b.set_yticks(range(len(valid_sig)))
-    ax_b.set_yticklabels(valid_sig, fontsize=5, style="italic")
+    ax_b.set_yticklabels(valid_sig, fontsize=6, style="italic")
     ax_b.set_xlim(-0.6, len(cell_types) - 0.4)
     ax_b.set_ylim(-0.6, len(valid_sig) - 0.4)
     ax_b.set_title("Expression of sig. insulin DEGs\nacross cell types", fontsize=7)
@@ -736,15 +739,15 @@ def plot_insulin_panel(
                                 norm=plt.Normalize(vmin=0, vmax=vmax))
     sm.set_array([])
     cb = fig.colorbar(sm, ax=ax_b, shrink=0.4, pad=0.01, aspect=15)
-    cb.set_label("Mean log-norm", fontsize=5)
-    cb.ax.tick_params(labelsize=4)
+    cb.set_label("Mean log-norm", fontsize=6)
+    cb.ax.tick_params(labelsize=5)
 
     # Size legend
     for frac, label in [(0.1, "10%"), (0.5, "50%"), (1.0, "100%")]:
         ax_b.scatter([], [], s=max(2, frac * 60), color="#AAAAAA",
                      edgecolors="#888888", linewidths=0.2, label=label)
-    ax_b.legend(title="% expr.", frameon=False, fontsize=4,
-                title_fontsize=4.5, loc="upper left",
+    ax_b.legend(title="% expr.", frameon=False, fontsize=5.5,
+                title_fontsize=6, loc="upper left",
                 bbox_to_anchor=(1.01, 1.0), borderaxespad=0)
     _panel_label(ax_b, "b")
 
@@ -772,9 +775,9 @@ def plot_insulin_panel(
                             interpolation="nearest")
 
         ax_c.set_yticks(range(len(pivot.index)))
-        ax_c.set_yticklabels(pivot.index, fontsize=5, style="italic")
+        ax_c.set_yticklabels(pivot.index, fontsize=6, style="italic")
         ax_c.set_xticks(range(len(pivot.columns)))
-        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=4)
+        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=5.5)
         ax_c.set_title("Per-cluster log₂FC\n(sig. hits only, adj-p < 0.05)", fontsize=7)
 
         # Overlay significance dots
@@ -792,8 +795,8 @@ def plot_insulin_panel(
                               fontsize=8, color="black", fontweight="bold")
 
         cb2 = fig.colorbar(im, ax=ax_c, shrink=0.5, pad=0.01, aspect=15)
-        cb2.set_label("log₂FC", fontsize=5)
-        cb2.ax.tick_params(labelsize=4)
+        cb2.set_label("log₂FC", fontsize=6)
+        cb2.ax.tick_params(labelsize=5)
     else:
         ax_c.text(0.5, 0.5, "No cluster DGE data", ha="center",
                   va="center", transform=ax_c.transAxes, fontsize=7)
@@ -827,7 +830,7 @@ def plot_insulin_panel(
                        .replace("(", "").replace(")","").strip()
                     for ct in ct_order]
         ax_d.set_xticks(x_pos2)
-        ax_d.set_xticklabels(short_ct, rotation=50, ha="right", fontsize=5)
+        ax_d.set_xticklabels(short_ct, rotation=50, ha="right", fontsize=6)
         ax_d.set_ylabel("No. sig. DEGs", fontsize=6)
         ax_d.set_title(
             "Insulin/metabolic signalling DEGs per cell type  (adj-p < 0.05)", fontsize=7
@@ -838,7 +841,7 @@ def plot_insulin_panel(
             tot = u + dw
             if tot > 0:
                 ax_d.text(xi, max(u, 0.2) + 0.15, str(tot),
-                          ha="center", va="bottom", fontsize=4.5)
+                          ha="center", va="bottom", fontsize=6)
     else:
         ax_d.axis("off")
     _panel_label(ax_d, "d")
