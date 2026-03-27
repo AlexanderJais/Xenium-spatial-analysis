@@ -323,7 +323,7 @@ def neighborhood_enrichment(
 
     n_ct = len(cell_types)
     n_pairs = n_ct * (n_ct - 1) // 2
-    if n_perms < 10_000 and n_pairs > 20:
+    if n_permutations < 10_000 and n_pairs > 20:
         logger.warning(
             "neighbourhood_enrichment: n_permutations=%d with %d cell type pairs "
             "(%d unique pairs). Minimum achievable p-value is 1/(n_perms+1)=%.4f. "

@@ -119,6 +119,11 @@ def run_cluster_dge(
         )
 
         try:
+            # Only forward lfc/pval thresholds to stringent_wilcoxon; other
+            # methods (wilcoxon, pydeseq2) ignore them and emit spurious warnings.
+            sw_kwargs = {}
+            if method == "stringent_wilcoxon":
+                sw_kwargs = {"lfc_threshold": log2fc_thresh, "pval_threshold": pval_thresh}
             res = run_dge(
                 sub,
                 method=method,
@@ -126,10 +131,7 @@ def run_cluster_dge(
                 condition_a=condition_a,
                 condition_b=condition_b,
                 replicate_key=replicate_key,
-                # Forward the user's thresholds so stringent_wilcoxon's internal
-                # filters use the same values as the post-hoc significance flags.
-                lfc_threshold=log2fc_thresh,
-                pval_threshold=pval_thresh,
+                **sw_kwargs,
             )
         except Exception as exc:
             logger.warning("DGE failed for group '%s': %s", grp, exc)

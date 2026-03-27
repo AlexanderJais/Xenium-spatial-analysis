@@ -317,7 +317,7 @@ def plot_spatial_stats(
     if neighborhood_result is not None and panel_idx < len(axes):
         ax = axes[panel_idx]
         z = neighborhood_result["z_score"]
-        p = neighborhood_result["p_value"]
+        p = neighborhood_result.get("p_adj", neighborhood_result["p_value"])
         labels = z.index.tolist()
         n_ct = len(labels)
 

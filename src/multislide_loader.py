@@ -502,10 +502,11 @@ def load_aged_adult_study(
         from src.roi_selector import interactive_roi_session
         # Load slides temporarily for the GUI
         temp_adatas = [
-            load_xenium_run(d, condition_label=c)
-            for d, c in zip(
+            load_xenium_run(d, condition_label=c, slide_id=sid)
+            for d, c, sid in zip(
                 list(aged_dirs) + list(adult_dirs),
                 ["AGED"] * 4 + ["ADULT"] * 4,
+                aged_ids + adult_ids,
             )
         ]
         interactive_roi_session(

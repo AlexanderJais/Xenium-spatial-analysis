@@ -456,8 +456,7 @@ def stringent_wilcoxon_dge(
         consistent_genes = []
         for gene in results[g_col]:
             if gene not in var_idx:
-                consistent_genes.append(gene)
-                continue
+                continue  # gene was filtered out — do not falsely count as consistent
             gi   = var_idx[gene]
             expr = X[:, gi]
             if sp.issparse(expr):
@@ -538,7 +537,7 @@ def stringent_wilcoxon_dge(
     keep = []
     for gene in results[g_col]:
         if gene not in var_idx:
-            keep.append(True)
+            keep.append(False)  # gene was filtered out — do not falsely pass
             continue
         gi   = var_idx[gene]
         expr = X[:, gi]
