@@ -1579,7 +1579,6 @@ def plot_neuropeptide_modules(
     fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.85))
     gs_outer = gridspec.GridSpec(
         2, 2, figure=fig, wspace=0.42, hspace=0.52,
-        left=0.07, right=0.97, bottom=0.08, top=0.93,
     )
     ax_a = fig.add_subplot(gs_outer[0, 0])   # UMAP
     ax_b = fig.add_subplot(gs_outer[0, 1])   # Heatmap
@@ -1673,33 +1672,51 @@ def plot_neuropeptide_modules(
     x_pos = np.arange(n_mod)
     bar_w = 0.35
 
-    for ci, cond in enumerate(conditions):
+    # Pre-compute per-condition means/sems for bar plotting and ymax calculation
+    means_by_cond: dict[str, list[float]] = {}
+    sems_by_cond:  dict[str, list[float]] = {}
+    for cond in conditions:
         cond_mask = adata.obs[condition_key] == cond
-        means = [adata.obs.loc[cond_mask, key].mean() for key in score_keys]
-        sems  = [
+        means_by_cond[cond] = [adata.obs.loc[cond_mask, key].mean() for key in score_keys]
+        sems_by_cond[cond]  = [
             adata.obs.loc[cond_mask, key].sem() if cond_mask.sum() > 1 else 0.0
             for key in score_keys
         ]
+
+    for ci, cond in enumerate(conditions):
         offset = (ci - 0.5) * bar_w
         ax_c.bar(
-            x_pos + offset, means, bar_w,
+            x_pos + offset, means_by_cond[cond], bar_w,
             color=cond_pal.get(cond, WONG[ci]),
-            yerr=sems, capsize=2, error_kw={"linewidth": 0.7},
+            yerr=sems_by_cond[cond], capsize=2, error_kw={"linewidth": 0.7},
             label=cond, linewidth=0,
         )
 
-    # Mann-Whitney U significance stars above each pair
+    # Mann-Whitney U significance stars with BH correction across modules.
+    # Cell-level test — exploratory; acknowledged in docstring.
+    raw_pvals: list[float] = []
+    test_indices: list[int] = []
     for mi, key in enumerate(score_keys):
         vals_a = adata.obs.loc[adata.obs[condition_key] == cond_a, key].dropna().values
         vals_b = adata.obs.loc[adata.obs[condition_key] == cond_b, key].dropna().values
         if len(vals_a) < 3 or len(vals_b) < 3:
             continue
         _, p = _stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
-        star = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
-        if star:
-            ymax = max(score_mat[:, mi].max(), 0) + 0.02
-            ax_c.text(x_pos[mi], ymax, star, ha="center", va="bottom",
-                      fontsize=6, color="#333333")
+        raw_pvals.append(p)
+        test_indices.append(mi)
+
+    if raw_pvals:
+        # Benjamini-Hochberg correction across tested modules
+        from statsmodels.stats.multitest import multipletests
+        _, padj, _, _ = multipletests(raw_pvals, method="fdr_bh")
+        for mi, p_adj in zip(test_indices, padj):
+            star = "***" if p_adj < 0.001 else "**" if p_adj < 0.01 else "*" if p_adj < 0.05 else ""
+            if star:
+                # Place star just above the tallest bar-top (mean + sem) for this module
+                bar_tops = [means_by_cond[c][mi] + sems_by_cond[c][mi] for c in conditions]
+                ymax = max(max(bar_tops), 0) + 0.01
+                ax_c.text(x_pos[mi], ymax, star, ha="center", va="bottom",
+                          fontsize=6, color="#333333")
 
     ax_c.axhline(0, color="#AAAAAA", lw=0.5, ls="--")
     ax_c.set_xticks(x_pos)
@@ -1747,8 +1764,6 @@ def plot_neuropeptide_modules(
         ax_d.spines[["left", "bottom", "top", "right"]].set_visible(False)
         ax_d.set_title(cond, fontsize=6, pad=2)
 
-    ax_d0.set_title(f"D   {cond_b}", loc="left" if ax_d0 is ax_d0 else "left",
-                    fontsize=7.5, fontweight="bold", pad=3)
     _panel_label(ax_d0, "D")
 
     # Gene-count annotation per module
