@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from scipy.spatial import cKDTree
-from scipy.stats import pearsonr
+from scipy.stats import norm, pearsonr
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def morans_i_scan(
         raise ValueError("adata.obsm['spatial'] required for Moran's I.")
 
     xy = adata.obsm["spatial"].astype(np.float64)
-    W = _build_knn_weights(xy, min(n_neighbors, adata.n_obs - 1))
+    W_raw, W_norm = _build_knn_weights(xy, min(n_neighbors, adata.n_obs - 1))
 
     genes_to_test = list(genes) if genes else list(adata.var_names)
     genes_to_test = [g for g in genes_to_test if g in adata.var_names]
@@ -99,9 +99,17 @@ def morans_i_scan(
     var_idx = {g: i for i, g in enumerate(adata.var_names)}
     N = adata.n_obs
 
-    # Precompute expected value and variance
-    # E[I] = -1 / (N - 1)
+    # Precompute expected value under normality assumption: E[I] = -1/(N-1)
     E_I = -1.0 / (N - 1)
+
+    # Variance components S1, S2 must be computed from the RAW binary W
+    # (not row-normalised), per Cliff & Ord (1981). Using row-stochastic W
+    # here systematically underestimates variance and inflates z-scores.
+    S1, S2 = _compute_s1_s2(W_raw)
+    S0 = float(W_raw.sum())
+    n = float(N)
+    E_I2 = (n**2 * S1 - n * S2 + 3 * S0**2) / ((n**2 - 1) * S0**2)
+    var_I_base = E_I2 - E_I**2  # same for all genes (depends only on W structure)
 
     results = []
     for i in range(0, len(genes_to_test), batch_size):
@@ -120,25 +128,15 @@ def morans_i_scan(
                 results.append((gene, np.nan, E_I, np.nan, 1.0))
                 continue
 
-            # Spatial lag: W @ z
-            if sp.issparse(W):
-                Wz = W.dot(z)
-            else:
-                Wz = W @ z
+            # Spatial lag using row-normalised W (local mean of neighbours)
+            Wz = W_norm.dot(z)
 
-            I = (N / W.sum()) * (np.dot(z, Wz) / denom)
+            # Moran's I: (N/S0) * (z'Wz / z'z). With row-normalised W, S0=N → factor=1
+            I = (N / W_norm.sum()) * (np.dot(z, Wz) / denom)
 
-            # Approximate variance under normality assumption
-            S1, S2 = _compute_s1_s2(W)
-            W_sum = W.sum()
-            n = float(N)
-            var_I = (
-                (n * ((n**2 - 3*n + 3)*S1 - n*S2 + 3*W_sum**2))
-                / ((n-1)*(n-2)*(n-3)*W_sum**2)
-                - (1 / (n-1)**2)
-            )
-            z_score = (I - E_I) / (np.sqrt(abs(var_I)) + 1e-12)
-            from scipy.stats import norm
+            # Variance under normality assumption (Cliff & Ord, 1981)
+            # Precomputed above from raw binary W
+            z_score = (I - E_I) / (np.sqrt(abs(var_I_base)) + 1e-12)
             p_value = 2 * (1 - norm.cdf(abs(z_score)))
 
             results.append((gene, float(I), E_I, float(z_score), float(p_value)))
@@ -198,7 +196,7 @@ def spatial_coexpression(
         raise ValueError("At least 2 genes must be present in adata.")
 
     xy = adata.obsm["spatial"].astype(np.float64)
-    W = _build_knn_weights(xy, n_neighbors)
+    _W_raw, W_norm = _build_knn_weights(xy, n_neighbors)
     X = _get_lognorm(adata)
     var_idx = {g: i for i, g in enumerate(adata.var_names)}
 
@@ -207,9 +205,16 @@ def spatial_coexpression(
     matrix = np.eye(n_genes)
 
     if method == "spatial_lag":
-        lag = W.dot(expr)  # (N, G) spatial lag for each gene
+        lag = W_norm.dot(expr)  # (N, G) spatial lag for each gene
         for i in range(n_genes):
             for j in range(i + 1, n_genes):
+                # Guard against zero-variance vectors (spatially invariant genes)
+                if np.std(expr[:, i]) < 1e-9 or np.std(lag[:, j]) < 1e-9 or \
+                   np.std(expr[:, j]) < 1e-9 or np.std(lag[:, i]) < 1e-9:
+                    val = 0.0
+                    matrix[i, j] = val
+                    matrix[j, i] = val
+                    continue
                 r, _ = pearsonr(expr[:, i], lag[:, j])
                 r2, _ = pearsonr(expr[:, j], lag[:, i])
                 val = (r + r2) / 2.0
@@ -276,7 +281,8 @@ def neighborhood_enrichment(
     Dict with keys:
         'observed'   -- DataFrame(cell_type x cell_type): observed co-occurrence
         'z_score'    -- z-score relative to permutation null
-        'p_value'    -- two-tailed p-value
+        'p_value'    -- two-tailed bias-corrected permutation p-value (raw)
+        'p_adj'      -- BH FDR-corrected p-value across all cell-type pairs
     """
     if "spatial" not in adata.obsm:
         raise ValueError("adata.obsm['spatial'] required.")
@@ -316,21 +322,42 @@ def neighborhood_enrichment(
         null_mats.append(_cooccurrence(shuffled))
     null_arr = np.stack(null_mats, axis=0)  # (n_perm, n_ct, n_ct)
 
+    n_ct = len(cell_types)
+    n_pairs = n_ct * (n_ct - 1) // 2
+    if n_permutations < 10_000 and n_pairs > 20:
+        logger.warning(
+            "neighbourhood_enrichment: n_permutations=%d with %d cell type pairs "
+            "(%d unique pairs). Minimum achievable p-value is 1/(n_perms+1)=%.4f. "
+            "Recommend n_permutations=10_000 for studies with >10 cell types.",
+            n_permutations, n_ct, n_pairs, 1.0 / (n_permutations + 1),
+        )
+
     null_mean = null_arr.mean(axis=0)
     null_std  = null_arr.std(axis=0) + 1e-12
     z_score = (observed - null_mean) / null_std
 
-    # Two-tailed p-value from permutation
-    p_value = np.minimum(
-        (null_arr >= observed).mean(axis=0),
-        (null_arr <= observed).mean(axis=0),
-    ) * 2
+    # Two-tailed p-value using Phipson & Smyth (2010) bias-corrected formula:
+    # p = (count + 1) / (B + 1), which avoids p=0 and is valid at the resolution
+    # boundary. Clipped to [0, 1] and BH-adjusted across all cell type pairs.
+    B = float(n_permutations)
+    count_upper = (null_arr >= observed).sum(axis=0).astype(float)
+    count_lower = (null_arr <= observed).sum(axis=0).astype(float)
+    p_raw = np.clip(
+        np.minimum(count_upper, count_lower) * 2 / (B + 1) + 2.0 / (B + 1),
+        0.0, 1.0,
+    )
+
+    # BH FDR correction across all n_ct × n_ct pairs
+    p_flat = p_raw.ravel()
+    p_adj_flat = _bh_correction(p_flat)
+    p_adj = p_adj_flat.reshape(p_raw.shape)
 
     idx = pd.Index(cell_types, name="cell_type")
     return {
         "observed": pd.DataFrame(observed, index=idx, columns=idx),
         "z_score" : pd.DataFrame(z_score,  index=idx, columns=idx),
-        "p_value" : pd.DataFrame(p_value,  index=idx, columns=idx),
+        "p_value" : pd.DataFrame(p_raw,    index=idx, columns=idx),
+        "p_adj"   : pd.DataFrame(p_adj,    index=idx, columns=idx),
     }
 
 
@@ -412,8 +439,23 @@ def _get_lognorm(adata: ad.AnnData) -> np.ndarray:
     return np.asarray(X, dtype=np.float32)
 
 
-def _build_knn_weights(xy: np.ndarray, k: int) -> sp.csr_matrix:
-    """Build a row-normalised binary KNN spatial weights matrix."""
+def _build_knn_weights(xy: np.ndarray, k: int) -> tuple[sp.csr_matrix, sp.csr_matrix]:
+    """Build spatial weight matrices for Moran's I.
+
+    Returns
+    -------
+    W_raw : csr_matrix
+        Binary k-NN connectivity matrix (symmetric, not normalised).
+        Used for computing Cliff & Ord variance components S1 and S2.
+    W_norm : csr_matrix
+        Row-normalised version of W_raw.
+        Used for computing the Moran's I statistic itself (spatial lag).
+
+    The two matrices must be kept separate: the Cliff & Ord (1981) variance
+    formula assumes the *raw* (non-stochastic) weight matrix for S1/S2.
+    Feeding a row-stochastic matrix into that formula underestimates the
+    variance and inflates z-scores for dense spatial regions.
+    """
     N = len(xy)
     # Cap k so we never request more neighbours than cells available
     k = min(k, N - 1)
@@ -425,12 +467,17 @@ def _build_knn_weights(xy: np.ndarray, k: int) -> sp.csr_matrix:
     col = idx.ravel()
     data = np.ones(N * k, dtype=np.float64)
 
-    W = sp.csr_matrix((data, (row, col)), shape=(N, N))
-    # Row-normalise
-    row_sums = np.asarray(W.sum(axis=1)).ravel()
+    W_raw = sp.csr_matrix((data, (row, col)), shape=(N, N))
+    # Symmetrise: w_ij = 1 if i is a neighbour of j OR j is a neighbour of i
+    W_raw = (W_raw + W_raw.T)
+    W_raw.data = np.ones_like(W_raw.data)  # re-binarise
+
+    # Row-normalise for spatial lag (W_norm @ x = local mean of x)
+    row_sums = np.asarray(W_raw.sum(axis=1)).ravel()
     row_sums[row_sums == 0] = 1.0
     D_inv = sp.diags(1.0 / row_sums)
-    return D_inv.dot(W)
+    W_norm = D_inv.dot(W_raw)
+    return W_raw, W_norm
 
 
 def _compute_s1_s2(W: sp.csr_matrix) -> tuple[float, float]:

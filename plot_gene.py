@@ -29,7 +29,7 @@ logger = logging.getLogger("plot_gene")
 
 # ── Default cache and output paths ───────────────────────────────────────────
 _HERE        = Path(__file__).parent
-_DEFAULT_CACHE = Path.home() / "xenium_dge_output_cache" / "adata_mbh_preprocessed.h5ad"
+_DEFAULT_CACHE = Path.home() / "xenium_dge_output" / "adata_mbh_final.h5ad"
 _DEFAULT_OUT   = Path.home() / "xenium_dge_output"
 
 # ── Custom grey → red colormap (same as pipeline fig7) ───────────────────────
@@ -81,7 +81,7 @@ def plot_gene(
     expr = np.array(_xi.todense()).ravel() if hasattr(_xi, "todense") else np.array(_xi).ravel()
     vmax = float(np.percentile(expr[expr > 0], 99)) if (expr > 0).any() else 1.0
 
-    conditions = adata.obs[condition_key].cat.categories.tolist()
+    conditions = sorted(adata.obs[condition_key].astype("category").cat.categories.tolist())
     if slide_key not in adata.obs.columns:
         logger.warning("No '%s' column — plotting by condition only.", slide_key)
         slides_per_cond = {c: [c] for c in conditions}
@@ -118,7 +118,7 @@ def plot_gene(
             continue
 
         xy = sub.obsm["spatial"]
-        _e = X[mask, :][:, gi]
+        _e = X[np.asarray(mask), :][:, gi]
         e  = np.array(_e.todense()).ravel() if hasattr(_e, "todense") else np.array(_e).ravel()
 
         sc = ax.scatter(
@@ -208,22 +208,12 @@ def main():
     # ── Load AnnData ─────────────────────────────────────────────────────────
     cache = Path(args.cache)
     if not cache.exists():
-        # Try raw AnnData as fallback
-        raw_cache = cache.parent / "adata_mbh_raw.h5ad"
-        if raw_cache.exists():
-            logger.warning(
-                "Preprocessed cache not found; using raw AnnData (%s). "
-                "Spatial coordinates will be available but expression is raw counts.",
-                raw_cache,
-            )
-            cache = raw_cache
-        else:
-            sys.exit(
-                f"ERROR: No AnnData cache found at:\n"
-                f"  {cache}\n"
-                f"  {raw_cache}\n"
-                f"Run the full pipeline first, or pass --cache <path>."
-            )
+        sys.exit(
+            f"ERROR: No AnnData cache found at:\n"
+            f"  {cache}\n"
+            f"Run the full pipeline first, or pass --cache <path> to specify a "
+            f"different location."
+        )
 
     logger.info("Loading AnnData from %s …", cache)
     import anndata as ad

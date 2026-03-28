@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 import anndata as ad
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
@@ -39,8 +38,7 @@ import pandas as pd
 
 from src.figures import (
     apply_nature_style, _savefig, _panel_label,
-    _safe_cluster_sort_key,
-    DOUBLE, SINGLE, WONG,
+    DOUBLE, SINGLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +50,25 @@ PANEL_TYPE_COLOURS = {
     "custom_unique"  : "#E69F00",   # amber
     "zero_filled"    : "#CCCCCC",   # grey
 }
+
+# Wong 2011 colour-blind-safe palette (same as figures.py)
+_WONG = ["#000000", "#E69F00", "#56B4E9", "#009E73",
+         "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+
+
+def _condition_palette(conditions) -> dict:
+    """
+    Build a condition → hex-colour mapping from the actual condition labels.
+
+    Uses Wong 2011 palette so colours are colour-blind safe and consistent
+    with the rest of the pipeline.  The first sorted condition gets blue
+    (#0072B2), the second gets vermillion (#D55E00), matching the AGED/ADULT
+    convention but working for any study design.
+    """
+    unique = sorted(set(conditions))
+    # Assign from index 5 (blue) onwards in the Wong palette
+    palette_pool = [_WONG[5], _WONG[6], _WONG[1], _WONG[3], _WONG[7], _WONG[2]]
+    return {c: palette_pool[i % len(palette_pool)] for i, c in enumerate(unique)}
 
 
 # ===========================================================================
@@ -133,7 +150,7 @@ def plot_panel_overview(
 
 def _plot_composition_bars(ax, adatas, slide_ids, conditions, registry, overlap_df):
     cond_unique = sorted(set(conditions))
-    cond_colours = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours = _condition_palette(conditions)
 
     shared_all_genes  = set(overlap_df[overlap_df["category"] == "shared_all"]["gene"])
     shared_part_genes = set(overlap_df[overlap_df["category"] == "shared_partial"]["gene"])
@@ -165,18 +182,18 @@ def _plot_composition_bars(ax, adatas, slide_ids, conditions, registry, overlap_
 
     # Condition tick colours
     ax.set_xticks(x)
-    ax.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=5.5)
+    ax.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=6)
     for tick, cond in zip(ax.get_xticklabels(), conditions):
         tick.set_color(cond_colours.get(cond, "black"))
 
     ax.set_ylabel("Number of genes")
     ax.set_title("Panel composition per slide")
-    ax.legend(frameon=False, fontsize=5.5, loc="upper right")
+    ax.legend(frameon=False, fontsize=6, loc="upper right")
 
     # Total annotation on top of bars
     for xi, total in enumerate(bar_base + bar_shared + bar_unique):
         ax.text(xi, total + 1, str(int(total)),
-                ha="center", va="bottom", fontsize=4.5, color="#444444")
+                ha="center", va="bottom", fontsize=6, color="#444444")
 
 
 # ===========================================================================
@@ -193,18 +210,17 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
     n_genes, n_slides = matrix.shape
     Z = matrix.values.astype(float)   # 1 = present, 0 = absent
 
-    cond_colours_map = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours_map = _condition_palette(conditions)
 
     # Split into condition annotation + heatmap
     from matplotlib.gridspec import GridSpecFromSubplotSpec
-    parent_gs = ax.get_gridspec()
-    pos = ax.get_position()
+    subplot_spec = ax.get_subplotspec()   # works regardless of parent GridSpec shape
     ax.remove()
 
-    # Re-create as two stacked axes sharing the column
+    # Re-create as two stacked axes sharing the same subplot cell
     sub_gs = gridspec.GridSpecFromSubplotSpec(
         2, 1,
-        subplot_spec=parent_gs[0, 1],
+        subplot_spec=subplot_spec,
         height_ratios=[0.05, 1],
         hspace=0.02,
     )
@@ -219,7 +235,7 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
     )
     ax_ann.set_xticks([])
     ax_ann.set_yticks([0])
-    ax_ann.set_yticklabels(["Condition"], fontsize=4.5)
+    ax_ann.set_yticklabels(["Condition"], fontsize=6)
     ax_ann.spines[:].set_visible(False)
 
     # Heatmap: custom two-colour map (present = teal, absent = near-white)
@@ -230,7 +246,7 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
                    interpolation="nearest")
 
     ax_heat.set_xticks(range(n_slides))
-    ax_heat.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=5)
+    ax_heat.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=6)
     for tick, cond in zip(ax_heat.get_xticklabels(), conditions):
         tick.set_color(cond_colours_map.get(cond, "black"))
 
@@ -240,7 +256,7 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
     ax_heat.set_yticks(yticks)
     ax_heat.set_yticklabels(
         [matrix.index[i] for i in yticks],
-        fontsize=max(3.5, 5.5 - n_genes // 15),
+        fontsize=max(6, 7 - n_genes // 15),
         style="italic",
     )
     ax_heat.set_title("Custom gene presence across slides", fontsize=7, pad=14)
@@ -250,7 +266,7 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
         mpatches.Patch(color="#009E73", label="Present"),
         mpatches.Patch(color="#F0F0F0", label="Absent"),
     ]
-    ax_heat.legend(handles=handles, frameon=False, fontsize=5,
+    ax_heat.legend(handles=handles, frameon=False, fontsize=6,
                    loc="lower right", bbox_to_anchor=(1.0, 0))
 
     # Slide count annotations on right
@@ -260,10 +276,10 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
     ax2.set_yticks(range(n_genes))
     ax2.set_yticklabels(
         [str(c) for c in slide_counts],
-        fontsize=max(3, 5 - n_genes // 20),
+        fontsize=max(6, 7 - n_genes // 20),
         color="#555555",
     )
-    ax2.set_ylabel("n slides", fontsize=5, color="#555555")
+    ax2.set_ylabel("n slides", fontsize=6, color="#555555")
     ax2.spines["right"].set_color("#CCCCCC")
     ax2.spines["right"].set_linewidth(0.4)
 
@@ -288,7 +304,7 @@ def _plot_upset_histogram(ax, overlap_df, n_slides, min_slides_threshold):
                   else PANEL_TYPE_COLOURS["zero_filled"])
         ax.bar(k, count, color=colour, width=0.7, linewidth=0)
         ax.text(k, count + 0.3, str(int(count)),
-                ha="center", va="bottom", fontsize=5.5)
+                ha="center", va="bottom", fontsize=6)
 
     # Threshold line
     ax.axvline(min_slides_threshold - 0.5, color="#D55E00",
@@ -297,7 +313,7 @@ def _plot_upset_histogram(ax, overlap_df, n_slides, min_slides_threshold):
     ax.set_ylabel("Number of custom genes")
     ax.set_title("Custom gene slide-count distribution")
     ax.set_xticks(range(1, n_slides + 1))
-    ax.legend(frameon=False, fontsize=5.5)
+    ax.legend(frameon=False, fontsize=6)
 
     # Annotation: kept vs dropped
     n_kept    = (overlap_df["n_slides"] >= min_slides_threshold).sum()
@@ -305,7 +321,7 @@ def _plot_upset_histogram(ax, overlap_df, n_slides, min_slides_threshold):
     ax.text(0.97, 0.96,
             f"Kept: {n_kept}\nDropped: {n_dropped}",
             transform=ax.transAxes, ha="right", va="top",
-            fontsize=5.5, color="#444444",
+            fontsize=6, color="#444444",
             bbox=dict(fc="white", alpha=0.7, pad=2, ec="none"))
 
 
@@ -318,10 +334,10 @@ def _plot_zerofill_bars(ax, adatas, slide_ids, conditions, used_harmonised: bool
     After partial_union harmonisation: number of zero-filled custom gene
     columns per slide, broken down by shared vs unique.
     """
-    cond_colours_map = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    cond_colours_map = _condition_palette(conditions)
     x = np.arange(len(slide_ids))
 
-    if not used_harmonised or "zero_filled" not in adatas[0].var.columns:
+    if not adatas or not used_harmonised or "zero_filled" not in adatas[0].var.columns:
         ax.text(0.5, 0.5, "Run harmonise() first\nto see zero-fill counts",
                 transform=ax.transAxes, ha="center", va="center",
                 fontsize=7, color="#888888")
@@ -344,16 +360,17 @@ def _plot_zerofill_bars(ax, adatas, slide_ids, conditions, used_harmonised: bool
            linewidth=0, label="custom_unique (zero-filled)")
 
     ax.set_xticks(x)
-    ax.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=5.5)
+    ax.set_xticklabels(slide_ids, rotation=45, ha="right", fontsize=6)
     for tick, cond in zip(ax.get_xticklabels(), conditions):
         tick.set_color(cond_colours_map.get(cond, "black"))
 
     ax.set_ylabel("Zero-filled gene columns")
     ax.set_title("Zero-fill impact after harmonisation")
-    ax.legend(frameon=False, fontsize=5, loc="upper right")
+    ax.legend(frameon=False, fontsize=6, loc="upper right")
 
     # Ideal is zero — add a note
-    max_zf = max(max(zf_shared), max(zf_unique), 1)
+    max_zf = max((s + u for s, u in zip(zf_shared, zf_unique)), default=1)
+    max_zf = max(max_zf, 1)
     ax.set_ylim(0, max_zf * 1.25)
 
 

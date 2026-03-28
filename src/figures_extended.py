@@ -24,7 +24,7 @@ Figures:
 
 import logging
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional
 
 import anndata as ad
 import matplotlib as mpl
@@ -35,7 +35,6 @@ import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import seaborn as sns
 
 # Reuse style helpers from figures.py
 from src.figures import (
@@ -44,10 +43,9 @@ from src.figures import (
     _panel_label,
     _cluster_palette,
     _safe_cluster_sort_key,
+    _get_lognorm,
     DOUBLE, SINGLE, WONG,
-    NATURE_RC,
     CONDITION_COLOURS,
-    DIVERGING_CMAP,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,7 +109,7 @@ def plot_cell_type_panel(
 
     # Layout: 2x2 grid. A=top-left, B=top-right, C=bottom-left, D=bottom-right
     # Extra right margin to accommodate the legend placed outside panel A.
-    fig = plt.figure(figsize=(DOUBLE * 1.2, DOUBLE * 0.75))
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.75))
     gs = gridspec.GridSpec(2, 2, figure=fig, wspace=0.38, hspace=0.48)
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1])
@@ -137,7 +135,7 @@ def plot_cell_type_panel(
         ax_a.set_title("Cell types (UMAP)", fontsize=7.5)
         _clean_ax(ax_a)
         leg = ax_a.legend(
-            markerscale=6, frameon=False, fontsize=4.5,
+            markerscale=6, frameon=False, fontsize=6,
             ncol=1,
             loc="upper left",
             bbox_to_anchor=(1.02, 1.0),   # outside the axes, right side
@@ -175,9 +173,9 @@ def plot_cell_type_panel(
                    c=colours, s=spot_size, alpha=0.75,
                    linewidths=0, rasterized=True)
         ax.set_aspect("equal")
-        ax.set_xlabel("x (µm)", fontsize=5.5)
-        ax.set_ylabel("y (µm)", fontsize=5.5)
-        ax.tick_params(labelsize=5)
+        ax.set_xlabel("x (µm)", fontsize=6)
+        ax.set_ylabel("y (µm)", fontsize=6)
+        ax.tick_params(labelsize=6)
         ax.set_title(title, fontsize=7)
 
     # ── B: Representative ADULT section ─────────────────────────────────────
@@ -217,7 +215,7 @@ def plot_cell_type_panel(
 
     fig.suptitle("Cell type annotation", fontsize=9, y=1.01)
     # rect leaves the right margin free for the legend outside panel A
-    fig.tight_layout(pad=0.4, rect=[0, 0, 0.93, 1])
+    fig.tight_layout(pad=0.4, rect=[0, 0, 0.88, 1])
     out = _savefig(fig, output_dir / "fig9_cell_types", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
@@ -278,7 +276,7 @@ def plot_spatial_stats(
     ax.scatter(df["morans_i"], y_pos, c=colours, s=8, zorder=3, linewidths=0)
     ax.axvline(0, color="black", lw=0.4)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(df["gene"].values, fontsize=4.5, style="italic")
+    ax.set_yticklabels(df["gene"].values, fontsize=6, style="italic")
     ax.set_xlabel("Moran's I")
     ax.set_title(f"Top {n_top_genes} spatially variable genes")
 
@@ -287,7 +285,7 @@ def plot_spatial_stats(
         mpatches.Patch(color="#D55E00", label="adj-p < 0.05"),
         mpatches.Patch(color="#AAAAAA", label="ns"),
     ]
-    ax.legend(handles=handles, frameon=False, fontsize=5, loc="lower right")
+    ax.legend(handles=handles, frameon=False, fontsize=6, loc="lower right")
     _panel_label(ax, chr(ord("a") + panel_idx))
     panel_idx += 1
 
@@ -295,7 +293,7 @@ def plot_spatial_stats(
     if coexpr_matrix is not None and panel_idx < len(axes):
         ax = axes[panel_idx]
         n_genes = len(coexpr_matrix)
-        font_s = max(3, 7 - n_genes // 5)
+        font_s = max(5, 7 - n_genes // 5)
         mask = np.eye(n_genes, dtype=bool)
         vmax = np.abs(coexpr_matrix.values[~mask]).max() or 1
         im = ax.imshow(
@@ -309,8 +307,8 @@ def plot_spatial_stats(
         ax.set_yticks(range(n_genes))
         ax.set_yticklabels(coexpr_matrix.index, fontsize=font_s, style="italic")
         cbar = fig.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.02)
-        cbar.set_label("Spatial lag\ncorrelation", fontsize=5)
-        cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
+        cbar.set_label("Spatial lag\ncorrelation", fontsize=6)
+        cbar.ax.tick_params(labelsize=5, width=0.4, length=1.5)
         ax.set_title("Spatial co-expression")
         _panel_label(ax, chr(ord("a") + panel_idx))
         panel_idx += 1
@@ -319,7 +317,7 @@ def plot_spatial_stats(
     if neighborhood_result is not None and panel_idx < len(axes):
         ax = axes[panel_idx]
         z = neighborhood_result["z_score"]
-        p = neighborhood_result["p_value"]
+        p = neighborhood_result.get("p_adj", neighborhood_result["p_value"])
         labels = z.index.tolist()
         n_ct = len(labels)
 
@@ -337,15 +335,15 @@ def plot_spatial_stats(
                     ax.text(j, i, "*", ha="center", va="center",
                             fontsize=6, color="black")
 
-        font_s = max(4, 6 - n_ct // 4)
+        font_s = max(5, 7 - n_ct // 4)
         ax.set_xticks(range(n_ct))
         ax.set_xticklabels(labels, rotation=90, fontsize=font_s)
         ax.set_yticks(range(n_ct))
         ax.set_yticklabels(labels, fontsize=font_s)
         cbar = fig.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.02)
-        cbar.set_label("z-score", fontsize=5)
-        cbar.ax.tick_params(labelsize=4.5, width=0.4, length=1.5)
-        ax.set_title("Neighbourhood enrichment\n(* adj-p < 0.05)")
+        cbar.set_label("z-score", fontsize=6)
+        cbar.ax.tick_params(labelsize=5, width=0.4, length=1.5)
+        ax.set_title("Neighbourhood enrichment\n(* p < 0.05)")
         _panel_label(ax, chr(ord("a") + panel_idx))
 
     fig.tight_layout(pad=0.4)
@@ -398,10 +396,14 @@ def plot_cluster_dge(
     groups = cluster_dge["group"].unique().tolist()
     n_groups = len(groups)
 
-    # Figure width: panel A is a narrow bar chart; panel B (bubble) gets 3x the space.
-    # No panel C — the shared-DEGs heatmap is removed to give panel B maximum room.
-    fig_w = DOUBLE * 2.2          # ~twice the standard double-column width
-    fig_h = max(4.5, n_groups * 0.28 + 2.0)  # scale height with number of clusters
+    # Pre-compute top genes so we can scale figure height to both groups and genes.
+    # Panel A is a narrow bar chart; panel B (bubble) gets 3× the width.
+    # Figure stays at Nature double-column width (7.2") and scales taller instead.
+    from src.cluster_dge import top_genes_per_group as _tgpg
+    _top_pre = _tgpg(cluster_dge, n=n_top_per_cluster, direction="both")
+    n_genes_est = len(_top_pre["gene"].unique()) if not _top_pre.empty else 1
+    fig_w = DOUBLE
+    fig_h = max(4.5, max(n_groups * 0.30, n_genes_est * 0.22) + 1.5)
 
     fig = plt.figure(figsize=(fig_w, fig_h))
     # GridSpec: A gets 1 unit, B gets 3 units width; tight gap between them
@@ -430,12 +432,11 @@ def plot_cluster_dge(
     ax_a.set_yticklabels([str(g) for g in groups], fontsize=6)
     ax_a.set_xlabel("Number of DEGs")
     ax_a.set_title("DEGs per group")
-    ax_a.legend(frameon=False, fontsize=5.5, loc="lower right")
+    ax_a.legend(frameon=False, fontsize=6, loc="lower right")
     _panel_label(ax_a, "a")
 
     # --- B: Bubble chart (gene x cluster) — takes all remaining width ---
-    from src.cluster_dge import top_genes_per_group
-    top = top_genes_per_group(cluster_dge, n=n_top_per_cluster, direction="both")
+    top = _top_pre  # already computed above for figure sizing
 
     if not top.empty:
         genes_ordered = (
@@ -469,21 +470,18 @@ def plot_cluster_dge(
         ax_b.set_xticks(range(len(groups)))
         ax_b.set_xticklabels([str(g) for g in groups], rotation=90, fontsize=6)
         ax_b.set_yticks(range(len(genes_ordered)))
-        ax_b.set_yticklabels(genes_ordered, fontsize=5.5, style="italic")
+        ax_b.set_yticklabels(genes_ordered, fontsize=6, style="italic")
         ax_b.set_xlim(-0.7, len(groups) - 0.3)
         ax_b.set_ylim(-0.7, len(genes_ordered) - 0.3)
         ax_b.grid(True, color="0.92", linewidth=0.35, zorder=0)
         ax_b.set_title("Top DEGs per group")
 
-        # Colorbar anchored to the right margin of panel B, outside data area
-        pos_b = ax_b.get_position()
-        cax   = fig.add_axes([pos_b.x1 + 0.01, pos_b.y0 + pos_b.height * 0.25,
-                               0.006, pos_b.height * 0.5])
+        # Colorbar anchored to panel B
         sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
-        cbar = fig.colorbar(sm, cax=cax)
-        cbar.set_label("log$_2$FC", fontsize=5.5)
-        cbar.ax.tick_params(labelsize=5, width=0.4, length=2)
+        cbar = fig.colorbar(sm, ax=ax_b, shrink=0.5, pad=0.02, aspect=15)
+        cbar.set_label("log$_2$FC", fontsize=6)
+        cbar.ax.tick_params(labelsize=5.5, width=0.4, length=2)
         cbar.outline.set_linewidth(0.4)
 
     _panel_label(ax_b, "b")
@@ -636,7 +634,7 @@ def plot_insulin_panel(
 
     ax_a.axvline(0, color="black", lw=0.5, zorder=2)
     ax_a.set_yticks(y_pos)
-    ax_a.set_yticklabels(gene_order, fontsize=5, style="italic")
+    ax_a.set_yticklabels(gene_order, fontsize=6, style="italic")
     ax_a.set_xlabel("log₂FC (AGED vs ADULT)", fontsize=7)
     ax_a.set_title("Insulin & metabolic signalling genes — global AGED vs ADULT", fontsize=8)
 
@@ -653,7 +651,7 @@ def plot_insulin_panel(
         mpatches.Patch(color=col, label=grp.replace("\n", " "))
         for grp, col in _GROUP_COLOURS.items()
     ]
-    ax_a.legend(handles=legend_handles, frameon=False, fontsize=5,
+    ax_a.legend(handles=legend_handles, frameon=False, fontsize=6,
                 loc="lower right", ncol=2)
 
     # Group bracket lines on the y-axis
@@ -669,7 +667,7 @@ def plot_insulin_panel(
                       textcoords=("axes fraction", "data"),
                       arrowprops=dict(arrowstyle="-", color=_GROUP_COLOURS[grp], lw=2))
         ax_a.text(-0.235, (y_start + y_end) / 2,
-                  grp.replace("\n", " "), fontsize=4.5, color=_GROUP_COLOURS[grp],
+                  grp.replace("\n", " "), fontsize=6, color=_GROUP_COLOURS[grp],
                   ha="right", va="center", rotation=0,
                   transform=ax_a.get_yaxis_transform())
         cumulative += n
@@ -681,15 +679,17 @@ def plot_insulin_panel(
     # Dot colour = mean log-norm expression; dot size = fraction expressing
     sig_genes = sorted(sig_global, key=lambda g: gdge.loc[g, log2fc_col])
 
-    cell_types = sorted(
-        adata.obs[cluster_key if cluster_key in adata.obs.columns else "cell_type"
-                  if "cell_type" in adata.obs.columns else cluster_key].unique(),
-        key=_safe_cluster_sort_key,
-    )
-    # Prefer cell_type labels
-    ct_key = "cell_type" if "cell_type" in adata.obs.columns else cluster_key
+    # Prefer cell_type labels if available
+    if cluster_key in adata.obs.columns:
+        ct_key = cluster_key
+    elif "cell_type" in adata.obs.columns:
+        ct_key = "cell_type"
+    else:
+        ct_key = cluster_key
+    if "cell_type" in adata.obs.columns:
+        ct_key = "cell_type"
+    cell_types = sorted(adata.obs[ct_key].unique(), key=_safe_cluster_sort_key)
 
-    import scipy.sparse as _sp
     X    = _get_lognorm(adata)
     vn   = list(adata.var_names)
     valid_sig = [g for g in sig_genes if g in vn]
@@ -702,7 +702,7 @@ def plot_insulin_panel(
         for gi, gene in enumerate(valid_sig):
             idx   = vn.index(gene)
             vals  = np.asarray(sub[:, idx].todense()).ravel() \
-                    if _sp.issparse(sub) else sub[:, idx]
+                    if sp.issparse(sub) else sub[:, idx]
             dot_mean[gi, ci] = float(vals.mean())
             dot_frac[gi, ci] = float((vals > 0).mean())
 
@@ -725,10 +725,10 @@ def plot_insulin_panel(
         [ct.replace("GABAergic neuron", "GABA").replace("Glutamatergic neuron", "Glut")
            .replace(" neuron", "").replace("(", "").replace(")","")
          for ct in cell_types],
-        rotation=60, ha="right", fontsize=4,
+        rotation=60, ha="right", fontsize=6,
     )
     ax_b.set_yticks(range(len(valid_sig)))
-    ax_b.set_yticklabels(valid_sig, fontsize=5, style="italic")
+    ax_b.set_yticklabels(valid_sig, fontsize=6, style="italic")
     ax_b.set_xlim(-0.6, len(cell_types) - 0.4)
     ax_b.set_ylim(-0.6, len(valid_sig) - 0.4)
     ax_b.set_title("Expression of sig. insulin DEGs\nacross cell types", fontsize=7)
@@ -739,15 +739,15 @@ def plot_insulin_panel(
                                 norm=plt.Normalize(vmin=0, vmax=vmax))
     sm.set_array([])
     cb = fig.colorbar(sm, ax=ax_b, shrink=0.4, pad=0.01, aspect=15)
-    cb.set_label("Mean log-norm", fontsize=5)
-    cb.ax.tick_params(labelsize=4)
+    cb.set_label("Mean log-norm", fontsize=6)
+    cb.ax.tick_params(labelsize=5)
 
     # Size legend
     for frac, label in [(0.1, "10%"), (0.5, "50%"), (1.0, "100%")]:
         ax_b.scatter([], [], s=max(2, frac * 60), color="#AAAAAA",
                      edgecolors="#888888", linewidths=0.2, label=label)
-    ax_b.legend(title="% expr.", frameon=False, fontsize=4,
-                title_fontsize=4.5, loc="upper left",
+    ax_b.legend(title="% expr.", frameon=False, fontsize=6,
+                title_fontsize=6, loc="upper left",
                 bbox_to_anchor=(1.01, 1.0), borderaxespad=0)
     _panel_label(ax_b, "b")
 
@@ -775,9 +775,9 @@ def plot_insulin_panel(
                             interpolation="nearest")
 
         ax_c.set_yticks(range(len(pivot.index)))
-        ax_c.set_yticklabels(pivot.index, fontsize=5, style="italic")
+        ax_c.set_yticklabels(pivot.index, fontsize=6, style="italic")
         ax_c.set_xticks(range(len(pivot.columns)))
-        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=4)
+        ax_c.set_xticklabels(pivot.columns, rotation=60, ha="right", fontsize=6)
         ax_c.set_title("Per-cluster log₂FC\n(sig. hits only, adj-p < 0.05)", fontsize=7)
 
         # Overlay significance dots
@@ -795,8 +795,8 @@ def plot_insulin_panel(
                               fontsize=8, color="black", fontweight="bold")
 
         cb2 = fig.colorbar(im, ax=ax_c, shrink=0.5, pad=0.01, aspect=15)
-        cb2.set_label("log₂FC", fontsize=5)
-        cb2.ax.tick_params(labelsize=4)
+        cb2.set_label("log₂FC", fontsize=6)
+        cb2.ax.tick_params(labelsize=5)
     else:
         ax_c.text(0.5, 0.5, "No cluster DGE data", ha="center",
                   va="center", transform=ax_c.transAxes, fontsize=7)
@@ -830,7 +830,7 @@ def plot_insulin_panel(
                        .replace("(", "").replace(")","").strip()
                     for ct in ct_order]
         ax_d.set_xticks(x_pos2)
-        ax_d.set_xticklabels(short_ct, rotation=50, ha="right", fontsize=5)
+        ax_d.set_xticklabels(short_ct, rotation=50, ha="right", fontsize=6)
         ax_d.set_ylabel("No. sig. DEGs", fontsize=6)
         ax_d.set_title(
             "Insulin/metabolic signalling DEGs per cell type  (adj-p < 0.05)", fontsize=7
@@ -841,7 +841,7 @@ def plot_insulin_panel(
             tot = u + dw
             if tot > 0:
                 ax_d.text(xi, max(u, 0.2) + 0.15, str(tot),
-                          ha="center", va="bottom", fontsize=4.5)
+                          ha="center", va="bottom", fontsize=6)
     else:
         ax_d.axis("off")
     _panel_label(ax_d, "d")
@@ -850,11 +850,940 @@ def plot_insulin_panel(
         "Insulin & metabolic signalling — AGED vs ADULT MBH",
         fontsize=9, y=1.01,
     )
-    with __import__("warnings").catch_warnings():
-        __import__("warnings").simplefilter("ignore")
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         fig.tight_layout(pad=0.6)
 
-    out = _savefig(fig, output_dir / "fig14_insulin_signalling", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig14_insulin", fmt=fmt, dpi=dpi)
     plt.close(fig)
-    logger.info("Saved: %s", out)
+    return out
+
+
+# ===========================================================================
+# Figure 15: Galanin (Gal) expression changes in the ageing MBH
+# ===========================================================================
+
+_GAL_GENE = "Gal"
+
+
+def _bh_correct(pvalues: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg FDR correction — scipy-version-independent."""
+    n = len(pvalues)
+    if n == 0:
+        return np.array([])
+    order    = np.argsort(pvalues)
+    pv_sort  = np.asarray(pvalues)[order]
+    adjusted = np.empty(n)
+    cummin   = 1.0
+    for i in range(n - 1, -1, -1):
+        cummin          = min(cummin, pv_sort[i] * n / (i + 1))
+        adjusted[order[i]] = cummin
+    return np.clip(adjusted, 0.0, 1.0)
+
+
+def plot_galanin_panel(
+    adata: ad.AnnData,
+    dge_results: Optional[pd.DataFrame] = None,
+    condition_key: str = "condition",
+    cluster_key: str = "leiden",
+    cell_type_key: str = "cell_type",
+    padj_col: str = "pval_adj",
+    log2fc_col: str = "log2fc",
+    pval_thresh: float = 0.05,
+    representative_slides: Optional[dict] = None,
+    spot_size: float = 3.0,
+    output_dir: Optional[Path] = None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 15 — Galanin (Gal) expression changes in the ageing MBH.
+
+    A: Spatial Gal expression map — representative ADULT section (dark bg)
+    B: Spatial Gal expression map — representative AGED section (dark bg)
+    C: Split violin of Gal log-norm expression per cell type × condition
+    D: Per-cell-type log₂FC (AGED/ADULT) lollipop with BH-corrected significance
+
+    Per-cell-type fold changes are computed from lognorm means (difference of
+    geometric-mean approximations in natural-log space, converted to log₂FC).
+    Mann-Whitney U tests across cells with Benjamini-Hochberg correction across
+    cell types provide significance markers — note this is cell-level
+    pseudoreplication; interpret as exploratory, not confirmatory.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Preprocessed and annotated AnnData (lognorm layer required).
+    dge_results : pd.DataFrame, optional
+        Global DGE table; used to overlay the bulk Gal effect size and p-value.
+    cell_type_key : str
+        obs column with cell type labels; falls back to cluster_key if absent.
+    pval_thresh : float
+        BH-adj-p threshold for significance asterisks in panel D.
+    representative_slides : dict, optional
+        {condition: slide_id} mapping for spatial panels A/B.
+    """
+    from scipy import stats as _stats
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+    apply_nature_style()
+
+    gene = _GAL_GENE
+
+    # ── Guard: gene absent from panel ─────────────────────────────────────────
+    if gene not in adata.var_names:
+        logger.warning("'%s' not found in adata.var_names; skipping fig15.", gene)
+        fig, ax = plt.subplots(figsize=(SINGLE, 1.5))
+        ax.text(0.5, 0.5, f"Gene '{gene}' not in Xenium panel",
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=8, color="#888888")
+        ax.axis("off")
+        out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
+        plt.close(fig)
+        return out
+
+    # ── Data preparation ──────────────────────────────────────────────────────
+    ct_key     = cell_type_key if cell_type_key in adata.obs.columns else cluster_key
+    conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()
+    cell_types = sorted(
+        adata.obs[ct_key].dropna().unique(), key=_safe_cluster_sort_key
+    )
+
+    # Dense lognorm matrix (_get_lognorm converts sparse → dense internally)
+    X        = _get_lognorm(adata)
+    gi       = list(adata.var_names).index(gene)
+    expr_all = np.asarray(X[:, gi]).ravel()
+
+    cond_a = conditions[0]                                     # ADULT / Control
+    cond_b = conditions[1] if len(conditions) > 1 else cond_a  # AGED / Treatment
+
+    # Per-cell-type, per-condition expression vectors
+    cond_mask = {c: (adata.obs[condition_key] == c).values for c in conditions}
+    ct_mask   = {ct: (adata.obs[ct_key] == ct).values        for ct in cell_types}
+    ct_cond_expr: dict[str, dict[str, np.ndarray]] = {
+        ct: {c: expr_all[ct_mask[ct] & cond_mask[c]] for c in conditions}
+        for ct in cell_types
+    }
+
+    # Per-cell-type log₂FC (lognorm means → natural-log difference → /ln(2))
+    # and Mann-Whitney U two-sided p-value
+    lfc_per_ct:  dict[str, float] = {}
+    pval_per_ct: dict[str, float] = {}
+    for ct in cell_types:
+        va = ct_cond_expr[ct][cond_a]
+        vb = ct_cond_expr[ct][cond_b]
+        mean_a = float(va.mean()) if len(va) > 0 else 0.0
+        mean_b = float(vb.mean()) if len(vb) > 0 else 0.0
+        lfc_per_ct[ct] = (mean_b - mean_a) / np.log(2)
+        if len(va) >= 3 and len(vb) >= 3:
+            _, p = _stats.mannwhitneyu(vb, va, alternative="two-sided")
+        else:
+            p = 1.0
+        pval_per_ct[ct] = p
+
+    # BH correction across all cell types
+    ct_list  = list(cell_types)
+    padj_per_ct = dict(
+        zip(ct_list, _bh_correct(np.array([pval_per_ct[ct] for ct in ct_list])))
+    )
+
+    # Resolve representative slides for spatial panels
+    slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
+    if representative_slides is None:
+        representative_slides = {}
+        if slide_col is not None:
+            for cond in conditions:
+                slides = sorted(
+                    adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()
+                )
+                if slides:
+                    representative_slides[cond] = slides[0]
+
+    # Expression colour scale (shared A + B, 99th percentile of positive cells)
+    pos_vals = expr_all[expr_all > 0]
+    vmax     = float(np.percentile(pos_vals, 99)) if len(pos_vals) > 0 else 1.0
+    _EXPR_CMAP = mcolors.LinearSegmentedColormap.from_list(
+        "grey_red",
+        ["#2A2A2A", "#7B1010", "#CC2222", "#FF6B35", "#FFD166"],
+        N=256,
+    )
+
+    # ── Figure layout ─────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 1.10))
+    gs  = gridspec.GridSpec(
+        2, 2, figure=fig,
+        height_ratios=[1.05, 1.0],
+        wspace=0.42, hspace=0.58,
+    )
+    ax_a = fig.add_subplot(gs[0, 0])   # spatial: ADULT
+    ax_b = fig.add_subplot(gs[0, 1])   # spatial: AGED
+    ax_c = fig.add_subplot(gs[1, 0])   # split violin per cell type
+    ax_d = fig.add_subplot(gs[1, 1])   # log₂FC lollipop per cell type
+
+    # ── Panels A & B: Spatial Gal expression ──────────────────────────────────
+    def _draw_spatial(ax, cond, title):
+        if "spatial" not in adata.obsm:
+            ax.text(0.5, 0.5, "No spatial data", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=7, color="#888888")
+            ax.axis("off")
+            return None
+        sid = representative_slides.get(cond)
+        if sid is not None and slide_col is not None:
+            idx = np.where(cond_mask[cond] & (adata.obs[slide_col] == sid).values)[0]
+        else:
+            idx = np.where(cond_mask[cond])[0]
+        if len(idx) == 0:
+            ax.text(0.5, 0.5, f"No cells for {cond}", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=7, color="#888888")
+            ax.axis("off")
+            return None
+        xy = adata.obsm["spatial"][idx]
+        e  = expr_all[idx]
+        sc = ax.scatter(
+            xy[:, 0], xy[:, 1],
+            c=e, cmap=_EXPR_CMAP, vmin=0, vmax=vmax,
+            s=spot_size, alpha=0.85, linewidths=0, rasterized=True,
+        )
+        ax.set_facecolor("#1A1A1A")
+        ax.set_aspect("equal")
+        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        ax.spines[:].set_visible(False)
+        ax.set_title(title, fontsize=7, color="#EEEEEE", pad=3)
+        return sc
+
+    sc_a = _draw_spatial(ax_a, cond_a, f"Galanin — {cond_a}")
+    sc_b = _draw_spatial(ax_b, cond_b, f"Galanin — {cond_b}")
+
+    # Single shared colorbar anchored to the right of panel B
+    ref_sc = sc_b if sc_b is not None else sc_a
+    if ref_sc is not None:
+        cax  = ax_b.inset_axes([1.04, 0.05, 0.04, 0.90])
+        cbar = fig.colorbar(ref_sc, cax=cax)
+        cbar.set_label("log-norm", fontsize=6, color="#CCCCCC")
+        cbar.ax.yaxis.set_tick_params(labelsize=6, colors="#CCCCCC")
+        cbar.outline.set_linewidth(0.4)
+        cbar.outline.set_edgecolor("#555555")
+
+    _panel_label(ax_a, "a")
+    _panel_label(ax_b, "b")
+
+    # ── Panel C: Split violins per cell type × condition ──────────────────────
+    n_ct        = len(cell_types)
+    cond_colour = {
+        c: CONDITION_COLOURS.get(c, WONG[i % len(WONG)])
+        for i, c in enumerate(conditions)
+    }
+    offsets = {cond_a: -0.18, cond_b: 0.18}  # left/right split
+
+    for ci, ct in enumerate(cell_types):
+        for cond in conditions:
+            vals = ct_cond_expr[ct][cond]
+            if len(vals) < 5:
+                continue
+            col = cond_colour[cond]
+            off = offsets.get(cond, 0.0)
+            try:
+                from scipy.stats import gaussian_kde as _kde
+                kde     = _kde(vals, bw_method=0.35)
+                x_range = np.linspace(float(vals.min()), float(vals.max()), 100)
+                dens    = kde(x_range)
+                dens    = dens / dens.max() * 0.30   # normalise half-width
+                ax_c.fill_betweenx(
+                    x_range,
+                    ci + off - dens,
+                    ci + off + dens,
+                    color=col, alpha=0.55, linewidth=0,
+                )
+            except Exception:
+                pass
+            # Median marker
+            ax_c.scatter(ci + off, float(np.median(vals)),
+                         color=col, s=12, zorder=4,
+                         linewidths=0.5, edgecolors="white")
+
+    ax_c.set_xticks(range(n_ct))
+    _short_c = [
+        ct.replace("GABAergic neuron", "GABA")
+          .replace("Glutamatergic neuron", "Glut")
+          .replace(" neuron", "")
+          .replace("(", "").replace(")", "").strip()
+        for ct in cell_types
+    ]
+    ax_c.set_xticklabels(_short_c, rotation=50, ha="right", fontsize=6)
+    ax_c.set_ylabel("Gal log-norm expression", fontsize=6)
+    ax_c.set_title("Galanin expression by cell type", fontsize=7)
+    ax_c.set_xlim(-0.6, n_ct - 0.4)
+    ax_c.spines[["top", "right"]].set_visible(False)
+
+    leg_c = [mpatches.Patch(color=cond_colour[c], label=c) for c in conditions]
+    ax_c.legend(handles=leg_c, frameon=False, fontsize=6, loc="upper right")
+    _panel_label(ax_c, "c")
+
+    # ── Panel D: Per-cell-type log₂FC lollipop ────────────────────────────────
+    # Sorted by absolute fold change (largest effect at top)
+    ct_sorted = sorted(cell_types, key=lambda ct: abs(lfc_per_ct[ct]), reverse=True)
+    y_pos   = np.arange(len(ct_sorted))
+    lfcs    = np.array([lfc_per_ct[ct]  for ct in ct_sorted])
+    sigs    = np.array([padj_per_ct[ct] < pval_thresh for ct in ct_sorted])
+    colours = [cond_colour[cond_b] if lfc > 0 else cond_colour[cond_a] for lfc in lfcs]
+    alphas  = np.where(sigs, 1.0, 0.28)
+
+    for i, (lfc, col, alpha, sig) in enumerate(zip(lfcs, colours, alphas, sigs)):
+        ax_d.hlines(i, 0, lfc, colors=col, linewidth=0.9, alpha=float(alpha))
+        ax_d.scatter(lfc, i, color=col, s=22 if sig else 7,
+                     zorder=3, alpha=float(alpha), linewidths=0)
+        if sig:
+            ha_  = "left"  if lfc >= 0 else "right"
+            off_ = 0.012   if lfc >= 0 else -0.012
+            ax_d.text(lfc + off_, i, "✱",
+                      ha=ha_, va="center", fontsize=7, color="black")
+
+    ax_d.axvline(0, color="black", lw=0.5, zorder=2)
+    ax_d.set_yticks(y_pos)
+    _short_d = [
+        ct.replace("GABAergic neuron", "GABA")
+          .replace("Glutamatergic neuron", "Glut")
+          .replace(" neuron", "")
+          .replace("(", "").replace(")", "").strip()
+        for ct in ct_sorted
+    ]
+    ax_d.set_yticklabels(_short_d, fontsize=6)
+    ax_d.set_xlabel(f"log₂FC  Gal  ({cond_b} / {cond_a})", fontsize=6)
+    ax_d.set_title(
+        f"Galanin fold change per cell type\n(✱ BH-adj-p < {pval_thresh})",
+        fontsize=7,
+    )
+    ax_d.spines[["top", "right"]].set_visible(False)
+
+    leg_d = [
+        mpatches.Patch(color=cond_colour[cond_b], label=f"Higher in {cond_b}"),
+        mpatches.Patch(color=cond_colour[cond_a], label=f"Higher in {cond_a}"),
+        mpatches.Patch(color="#BBBBBB", alpha=0.45, label="ns"),
+    ]
+    ax_d.legend(handles=leg_d, frameon=False, fontsize=6, loc="lower right")
+    _panel_label(ax_d, "d")
+
+    # ── Global DGE annotation from bulk results ───────────────────────────────
+    if dge_results is not None and not dge_results.empty:
+        gene_col = "gene" if "gene" in dge_results.columns else dge_results.columns[0]
+        gal_row  = dge_results[dge_results[gene_col] == gene]
+        if (not gal_row.empty
+                and padj_col in gal_row.columns
+                and log2fc_col in gal_row.columns):
+            gal_lfc  = float(gal_row[log2fc_col].iloc[0])
+            gal_padj = float(gal_row[padj_col].iloc[0])
+            sig_star = " ✱" if gal_padj < pval_thresh else ""
+            fig.text(
+                0.5, 0.005,
+                (f"Global DGE (all cells):  log₂FC = {gal_lfc:+.2f},  "
+                 f"BH-adj-p = {gal_padj:.3g}{sig_star}"),
+                ha="center", va="bottom", fontsize=6.5, color="#444444",
+                transform=fig.transFigure,
+            )
+
+    fig.suptitle(
+        "Galanin (Gal) in the ageing hypothalamus (MBH)",
+        fontsize=9, y=1.01,
+    )
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5)
+
+    out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out
+
+
+# ===========================================================================
+# Fig 16: Cell type composition (scCODA / CLR + t-test)
+# ===========================================================================
+
+def plot_composition_panel(
+    composition_results: "pd.DataFrame",
+    adata: ad.AnnData,
+    cell_type_key: str = "cell_type",
+    condition_key: str = "condition",
+    replicate_key: str = "slide_id",
+    output_dir=None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 16 — Cell type composition testing panel.
+
+    Layout (double-column, 2 rows):
+      A (left)  — Stacked proportion bar chart per biological replicate,
+                  grouped by condition.
+      B (right) — Forest-plot-style lollipop showing log₂FC per cell type
+                  with 95% credible / confidence interval (from composition_results).
+                  Significant cell types highlighted in the condition-B colour.
+    """
+    import matplotlib.gridspec as gridspec
+
+    from src.figures import (
+        apply_nature_style, DOUBLE, WONG, _savefig,
+    )
+    from src.composition_analysis import _build_composition_table
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+
+    apply_nature_style()
+
+    conditions = sorted(adata.obs[condition_key].unique())
+    cond_a = conditions[0] if len(conditions) >= 1 else "A"
+    cond_b = conditions[1] if len(conditions) >= 2 else "B"
+    pal = {cond_a: WONG[5], cond_b: WONG[6]}   # blue / vermillion
+
+    # ── Build proportion table ────────────────────────────────────────────────
+    comp_df = _build_composition_table(adata, cell_type_key, replicate_key, condition_key)
+    cell_types = [c for c in comp_df.columns if c not in (condition_key, "n_cells")]
+
+    # Proportions per replicate
+    counts_mat = comp_df[cell_types].values.astype(float)
+    row_sums = counts_mat.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    props_mat = counts_mat / row_sums
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.90))
+    gs = gridspec.GridSpec(
+        1, 2, figure=fig,
+        wspace=0.45,
+        left=0.10, right=0.98, top=0.90, bottom=0.22,
+    )
+    ax_a = fig.add_subplot(gs[0])
+    ax_b = fig.add_subplot(gs[1])
+
+    # ── Panel A: stacked proportion bars ─────────────────────────────────────
+    # Use a tab20-derived palette for cell types (up to 20 types)
+    n_ct = len(cell_types)
+    import matplotlib.cm as _cm
+    ct_colors = [_cm.tab20(i / max(n_ct, 1)) for i in range(n_ct)]
+
+    # Sort replicates: condition_a first, then condition_b
+    rep_order = (
+        list(comp_df.index[comp_df[condition_key] == cond_a]) +
+        list(comp_df.index[comp_df[condition_key] == cond_b])
+    )
+    rep_order = [r for r in rep_order if r in comp_df.index]
+    props_sorted = pd.DataFrame(props_mat, index=comp_df.index, columns=cell_types).loc[rep_order]
+    cond_of_rep = comp_df[condition_key].loc[rep_order]
+
+    bottom = np.zeros(len(rep_order))
+    for i, ct in enumerate(cell_types):
+        heights = props_sorted[ct].values
+        ax_a.bar(
+            range(len(rep_order)), heights,
+            bottom=bottom,
+            color=ct_colors[i],
+            width=0.7,
+            linewidth=0,
+            label=ct,
+        )
+        bottom += heights
+
+    # Condition separator line
+    n_a = (cond_of_rep == cond_a).sum()
+    if 0 < n_a < len(rep_order):
+        ax_a.axvline(n_a - 0.5, color="#444444", lw=0.8, ls="--")
+
+    # X-ticks = replicate IDs
+    tick_labels = [str(r).replace("ADULT_", "Ad").replace("AGED_", "Ag") for r in rep_order]
+    ax_a.set_xticks(range(len(rep_order)))
+    ax_a.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=6)
+    ax_a.set_ylabel("Cell type proportion", fontsize=7)
+    ax_a.set_ylim(0, 1)
+    ax_a.set_title("A", loc="left", fontsize=9, fontweight="bold", pad=3)
+
+    # Condition labels above bars
+    if n_a > 0:
+        ax_a.text(
+            (n_a - 1) / 2, 1.04, cond_a, ha="center", va="bottom",
+            fontsize=6.5, color=pal[cond_a], transform=ax_a.transData,
+        )
+    if n_a < len(rep_order):
+        ax_a.text(
+            (n_a + len(rep_order) - 1) / 2, 1.04, cond_b, ha="center", va="bottom",
+            fontsize=6.5, color=pal[cond_b], transform=ax_a.transData,
+        )
+
+    # Legend: place below panel A
+    handles_a = [
+        plt.Rectangle((0, 0), 1, 1, fc=ct_colors[i], linewidth=0)
+        for i in range(n_ct)
+    ]
+    ax_a.legend(
+        handles_a, cell_types,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.30),
+        ncol=min(3, n_ct),
+        fontsize=5,
+        frameon=False,
+        handlelength=1.0,
+        handletextpad=0.4,
+        columnspacing=0.8,
+    )
+
+    # ── Panel B: forest plot (lollipop with CI) ───────────────────────────────
+    if composition_results is not None and not composition_results.empty:
+        df_b = composition_results.sort_values("log2fc").reset_index(drop=True)
+        y_pos = np.arange(len(df_b))
+
+        # CI bars
+        if "credible_interval_lo" in df_b.columns and "credible_interval_hi" in df_b.columns:
+            for i, row in df_b.iterrows():
+                lo = row.get("credible_interval_lo", np.nan)
+                hi = row.get("credible_interval_hi", np.nan)
+                if np.isfinite(lo) and np.isfinite(hi):
+                    ax_b.plot(
+                        [lo, hi], [y_pos[i], y_pos[i]],
+                        color="#BBBBBB", lw=1.2, zorder=1, solid_capstyle="round",
+                    )
+
+        # Lollipop stems
+        sig_mask = df_b["significant"].values
+        for i, (lfc, sig) in enumerate(zip(df_b["log2fc"], sig_mask)):
+            color = pal[cond_b] if sig else "#AAAAAA"
+            ax_b.plot([0, lfc], [y_pos[i], y_pos[i]], color=color, lw=0.8, zorder=2)
+
+        # Dots
+        scatter_colors = [pal[cond_b] if s else "#AAAAAA" for s in sig_mask]
+        ax_b.scatter(
+            df_b["log2fc"], y_pos,
+            c=scatter_colors, s=18, zorder=3, linewidths=0,
+        )
+
+        # Significance marker
+        for i, sig in enumerate(sig_mask):
+            if sig:
+                lfc = df_b["log2fc"].iloc[i]
+                ax_b.text(
+                    lfc + 0.08 * np.sign(lfc), y_pos[i], "✱",
+                    ha="center", va="center", fontsize=6, color=pal[cond_b],
+                )
+
+        # Y-axis labels
+        ax_b.set_yticks(y_pos)
+        ax_b.set_yticklabels(df_b["cell_type"].values, fontsize=6)
+
+        ax_b.axvline(0, color="#444444", lw=0.7, ls="-")
+        ax_b.set_xlabel(f"log₂FC ({cond_b} / {cond_a})", fontsize=7)
+
+        # Method annotation
+        method_str = df_b["method"].iloc[0] if "method" in df_b.columns else ""
+        method_label = {
+            "scCODA"  : "scCODA  (Dirichlet-multinomial, Büttner 2021)",
+            "CLR_ttest": "CLR + Welch t-test  (Aitchison 1986; scCODA fallback)",
+        }.get(method_str, method_str)
+        ax_b.text(
+            0.5, -0.16, method_label,
+            ha="center", va="top", fontsize=5,
+            color="#666666", transform=ax_b.transAxes,
+        )
+
+        n_sig = int(sig_mask.sum())
+        ax_b.set_title(
+            f"B   n={n_sig} significant cell type{'s' if n_sig != 1 else ''}",
+            loc="left", fontsize=9, fontweight="bold", pad=3,
+        )
+    else:
+        ax_b.text(
+            0.5, 0.5, "No composition results\navailable",
+            ha="center", va="center", fontsize=7, transform=ax_b.transAxes,
+        )
+        ax_b.set_title("B", loc="left", fontsize=9, fontweight="bold", pad=3)
+
+    fig.suptitle(
+        "Cell type composition — AGED vs ADULT (MBH)",
+        fontsize=9, y=0.97,
+    )
+
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5, rect=[0, 0.05, 1, 0.96])
+
+    out = _savefig(fig, output_dir / "fig16_composition", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out
+
+
+# ===========================================================================
+# Figure 17: Neuropeptide co-expression modules
+# ===========================================================================
+
+# MBH neuropeptide systems — gene sets ordered by functional relevance.
+# Genes are filtered at runtime to those present in the panel.
+NEUROPEPTIDE_MODULES: dict[str, list[str]] = {
+    "AgRP/NPY\n(orexigenic)":    ["Agrp", "Npy", "Npy1r", "Npy2r", "Npy5r", "Ghsr"],
+    "POMC/CART\n(anorexigenic)": ["Pomc", "Cartpt", "Pcsk1", "Pcsk2", "Mc3r"],
+    "KNDy\n(Kiss1/Tac2/Pdyn)":   ["Kiss1", "Tac2", "Pdyn", "Tacr3", "Kiss1r"],
+    "Somatostatin":              ["Sst", "Sstr1", "Sstr2", "Sstr3", "Sstr4", "Sstr5"],
+    "TRH/Dopamine":              ["Trh", "Trhr", "Th", "Slc6a3", "Drd1", "Drd2"],
+    "Galanin\nsystem":           ["Gal", "Galr1", "Galr2", "Galr3"],
+}
+
+_MODULE_COLOURS: dict[str, str] = {
+    "AgRP/NPY\n(orexigenic)":    "#D55E00",
+    "POMC/CART\n(anorexigenic)": "#0072B2",
+    "KNDy\n(Kiss1/Tac2/Pdyn)":   "#CC79A7",
+    "Somatostatin":              "#009E73",
+    "TRH/Dopamine":              "#E69F00",
+    "Galanin\nsystem":           "#56B4E9",
+}
+
+_SCORE_THRESHOLD = 0.05   # cells below this max score are labelled "unassigned"
+
+
+def _score_neuropeptide_modules(
+    adata: ad.AnnData,
+    modules: dict[str, list[str]] = NEUROPEPTIDE_MODULES,
+) -> list[tuple[str, str, int]]:
+    """
+    Score cells for each neuropeptide module with scanpy's score_genes.
+
+    Returns
+    -------
+    List of (module_name, obs_key, n_genes_in_panel) for modules with ≥2 genes.
+    Module scores are added to adata.obs in-place.
+    """
+    import scanpy as sc
+
+    scored: list[tuple[str, str, int]] = []
+    for name, genes in modules.items():
+        present = [g for g in genes if g in adata.var_names]
+        if len(present) < 2:
+            logger.info(
+                "Neuropeptide module '%s': %d/%d genes in panel — skipping",
+                name, len(present), len(genes),
+            )
+            continue
+        # Build a safe obs-column key from the first line of the name
+        safe = name.split("\n")[0].lower()
+        for ch in "/()- ":
+            safe = safe.replace(ch, "_")
+        key = f"npmod_{safe}"
+        sc.tl.score_genes(adata, gene_list=present, score_name=key, use_raw=False)
+        scored.append((name, key, len(present)))
+        logger.info(
+            "Neuropeptide module '%s': scored %d/%d genes → obs['%s']",
+            name, len(present), len(genes), key,
+        )
+    return scored
+
+
+def plot_neuropeptide_modules(
+    adata: ad.AnnData,
+    condition_key: str = "condition",
+    cell_type_key: str = "cell_type",
+    representative_slides: Optional[dict] = None,
+    score_threshold: float = _SCORE_THRESHOLD,
+    output_dir: Optional[Path] = None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 17 — Neuropeptide co-expression modules in the ageing MBH.
+
+    Panels
+    ------
+    A (top-left):
+        UMAP coloured by dominant neuropeptide module (argmax across module
+        scores). Cells where every score ≤ score_threshold are grey
+        ("unassigned").
+    B (top-right):
+        Heatmap — mean module score per cell type × module. Rows = cell types,
+        columns = modules; each column is z-scored for visual contrast.
+    C (bottom-left):
+        Grouped bar chart — AGED vs ADULT mean module score for each module
+        across all cells. Mann-Whitney U p-values annotated above each pair.
+    D (bottom-right):
+        Spatial maps — dominant module assignment on one representative slide
+        per condition (ADULT top, AGED bottom). Grey = unassigned.
+
+    Parameters
+    ----------
+    adata:
+        AnnData with obs[condition_key], obs[cell_type_key], obsm['X_umap'],
+        obs['x_centroid'] / obs['y_centroid'] (spatial coordinates).
+    condition_key:
+        obs column for condition labels.
+    cell_type_key:
+        obs column for cell type labels (used for panel B).
+    representative_slides:
+        Dict mapping condition → slide_id for panel D.  Auto-inferred if None.
+    score_threshold:
+        Minimum per-cell maximum module score to assign a dominant module.
+    output_dir:
+        Directory to save the figure.
+    fmt / dpi:
+        Figure format and resolution.
+    """
+    import warnings as _w
+    from scipy import stats as _stats
+
+    if output_dir is None:
+        output_dir = Path("figures_output")
+    output_dir = Path(output_dir)
+
+    apply_nature_style()
+
+    # ── Score modules ──────────────────────────────────────────────────────────
+    scored = _score_neuropeptide_modules(adata)
+    if not scored:
+        logger.warning("Fig 17: no neuropeptide modules could be scored — skipping.")
+        return output_dir / f"fig17_neuropeptide_modules.{fmt}"
+
+    module_names = [s[0] for s in scored]
+    score_keys   = [s[1] for s in scored]
+    n_genes_list = [s[2] for s in scored]
+    mod_colours  = [_MODULE_COLOURS.get(n, "#888888") for n in module_names]
+
+    score_mat = adata.obs[score_keys].values.astype(float)  # (n_cells, n_modules)
+
+    # Dominant module: argmax; grey if max ≤ threshold
+    max_scores = score_mat.max(axis=1)
+    dom_idx    = score_mat.argmax(axis=1)
+    dom_idx    = np.where(max_scores > score_threshold, dom_idx, -1)  # -1 = unassigned
+
+    adata.obs["npmod_dominant"] = pd.Categorical(
+        [module_names[i] if i >= 0 else "unassigned" for i in dom_idx]
+    )
+
+    # ── Conditions ────────────────────────────────────────────────────────────
+    conditions = sorted(adata.obs[condition_key].unique().tolist())
+    cond_a, cond_b = conditions[0], conditions[-1]
+    cond_pal = {c: CONDITION_COLOURS.get(c, WONG[i]) for i, c in enumerate(conditions)}
+
+    # ── Representative slides ─────────────────────────────────────────────────
+    slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
+    if representative_slides is None:
+        representative_slides = {}
+        if slide_col is not None:
+            for cond in conditions:
+                slides = sorted(
+                    adata.obs.loc[adata.obs[condition_key] == cond, slide_col].unique()
+                )
+                if slides:
+                    representative_slides[cond] = slides[0]
+
+    # ── Figure layout ─────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.85))
+    gs_outer = gridspec.GridSpec(
+        2, 2, figure=fig, wspace=0.42, hspace=0.52,
+    )
+    ax_a = fig.add_subplot(gs_outer[0, 0])   # UMAP
+    ax_b = fig.add_subplot(gs_outer[0, 1])   # Heatmap
+    ax_c = fig.add_subplot(gs_outer[1, 0])   # Bar chart
+    # Panel D: two stacked spatial maps
+    gs_d = gridspec.GridSpecFromSubplotSpec(
+        2, 1, subplot_spec=gs_outer[1, 1], hspace=0.35
+    )
+    ax_d0 = fig.add_subplot(gs_d[0])   # spatial — cond_a (ADULT first)
+    ax_d1 = fig.add_subplot(gs_d[1])   # spatial — cond_b (AGED second)
+
+    # ── Panel A: UMAP coloured by dominant module ──────────────────────────────
+    if "X_umap" in adata.obsm:
+        umap = adata.obsm["X_umap"]
+        # Unassigned cells first (background)
+        mask_un = dom_idx < 0
+        ax_a.scatter(
+            umap[mask_un, 0], umap[mask_un, 1],
+            c="#CCCCCC", s=0.4, alpha=0.3, linewidths=0, rasterized=True,
+        )
+        legend_handles = []
+        for mi, (name, key, col) in enumerate(zip(module_names, score_keys, mod_colours)):
+            mask = dom_idx == mi
+            if mask.sum() == 0:
+                continue
+            ax_a.scatter(
+                umap[mask, 0], umap[mask, 1],
+                c=col, s=0.8, alpha=0.7, linewidths=0,
+                label=name, rasterized=True,
+            )
+            legend_handles.append(mpatches.Patch(color=col, label=name.replace("\n", " ")))
+        # Unassigned in legend
+        legend_handles.append(mpatches.Patch(color="#CCCCCC", label="unassigned"))
+        ax_a.legend(
+            handles=legend_handles, loc="upper left",
+            bbox_to_anchor=(1.02, 1.0), borderaxespad=0,
+            frameon=False, fontsize=5.5, handlelength=1.0,
+        )
+    else:
+        ax_a.text(0.5, 0.5, "UMAP not available", ha="center", va="center",
+                  fontsize=7, transform=ax_a.transAxes)
+
+    _panel_label(ax_a, "A")
+    ax_a.set_title("Dominant neuropeptide module", fontsize=7.5)
+    _clean_ax(ax_a)
+
+    # ── Panel B: Heatmap — mean score per cell type × module ──────────────────
+    use_ct = cell_type_key if cell_type_key in adata.obs.columns else condition_key
+    cell_types_present = sorted(adata.obs[use_ct].dropna().unique().tolist())
+
+    hm_data = np.zeros((len(cell_types_present), len(score_keys)))
+    for ci, ct in enumerate(cell_types_present):
+        ct_mask = adata.obs[use_ct] == ct
+        for mi, key in enumerate(score_keys):
+            hm_data[ci, mi] = adata.obs.loc[ct_mask, key].mean()
+
+    # Z-score each module column so cell types with high overall expression
+    # don't dominate the colour scale
+    with np.errstate(invalid="ignore", divide="ignore"):
+        col_std = hm_data.std(axis=0)
+        col_std[col_std == 0] = 1.0
+        hm_z = (hm_data - hm_data.mean(axis=0)) / col_std
+
+    # Short cell type labels for y-axis
+    short_ct = [ct[:18] for ct in cell_types_present]
+    short_mod = [n.split("\n")[0] for n in module_names]
+
+    im = ax_b.imshow(
+        hm_z, aspect="auto", interpolation="nearest",
+        cmap="RdBu_r", vmin=-2, vmax=2,
+    )
+    ax_b.set_xticks(np.arange(len(score_keys)))
+    ax_b.set_xticklabels(short_mod, rotation=35, ha="right", fontsize=5.5)
+    ax_b.set_yticks(np.arange(len(cell_types_present)))
+    ax_b.set_yticklabels(short_ct, fontsize=5.5)
+    ax_b.tick_params(left=False, bottom=False)
+
+    # Module colour tick marks on x-axis
+    for mi, col in enumerate(mod_colours):
+        ax_b.get_xticklabels()[mi].set_color(col)
+
+    cbar = plt.colorbar(im, ax=ax_b, fraction=0.046, pad=0.04, shrink=0.7)
+    cbar.set_label("z-score", fontsize=5.5)
+    cbar.ax.tick_params(labelsize=5)
+
+    _panel_label(ax_b, "B")
+    ax_b.set_title("Module score per cell type", fontsize=7.5)
+
+    # ── Panel C: AGED vs ADULT mean score per module ───────────────────────────
+    n_mod = len(score_keys)
+    x_pos = np.arange(n_mod)
+    bar_w = 0.35
+
+    # Pre-compute per-condition means/sems for bar plotting and ymax calculation
+    means_by_cond: dict[str, list[float]] = {}
+    sems_by_cond:  dict[str, list[float]] = {}
+    for cond in conditions:
+        cond_mask = adata.obs[condition_key] == cond
+        means_by_cond[cond] = [adata.obs.loc[cond_mask, key].mean() for key in score_keys]
+        sems_by_cond[cond]  = [
+            adata.obs.loc[cond_mask, key].sem() if cond_mask.sum() > 1 else 0.0
+            for key in score_keys
+        ]
+
+    for ci, cond in enumerate(conditions):
+        offset = (ci - 0.5) * bar_w
+        ax_c.bar(
+            x_pos + offset, means_by_cond[cond], bar_w,
+            color=cond_pal.get(cond, WONG[ci]),
+            yerr=sems_by_cond[cond], capsize=2, error_kw={"linewidth": 0.7},
+            label=cond, linewidth=0,
+        )
+
+    # Mann-Whitney U significance stars with BH correction across modules.
+    # Cell-level test — exploratory; acknowledged in docstring.
+    raw_pvals: list[float] = []
+    test_indices: list[int] = []
+    for mi, key in enumerate(score_keys):
+        vals_a = adata.obs.loc[adata.obs[condition_key] == cond_a, key].dropna().values
+        vals_b = adata.obs.loc[adata.obs[condition_key] == cond_b, key].dropna().values
+        if len(vals_a) < 3 or len(vals_b) < 3:
+            continue
+        _, p = _stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
+        raw_pvals.append(p)
+        test_indices.append(mi)
+
+    if raw_pvals:
+        # Benjamini-Hochberg correction across tested modules
+        from statsmodels.stats.multitest import multipletests
+        _, padj, _, _ = multipletests(raw_pvals, method="fdr_bh")
+        for mi, p_adj in zip(test_indices, padj):
+            star = "***" if p_adj < 0.001 else "**" if p_adj < 0.01 else "*" if p_adj < 0.05 else ""
+            if star:
+                # Place star just above the tallest bar-top (mean + sem) for this module
+                bar_tops = [means_by_cond[c][mi] + sems_by_cond[c][mi] for c in conditions]
+                ymax = max(max(bar_tops), 0) + 0.01
+                ax_c.text(x_pos[mi], ymax, star, ha="center", va="bottom",
+                          fontsize=6, color="#333333")
+
+    ax_c.axhline(0, color="#AAAAAA", lw=0.5, ls="--")
+    ax_c.set_xticks(x_pos)
+    ax_c.set_xticklabels(short_mod, rotation=30, ha="right", fontsize=5.5)
+    ax_c.set_ylabel("Mean module score (±SEM)", fontsize=6.5)
+    ax_c.legend(frameon=False, fontsize=6, loc="upper right")
+    _panel_label(ax_c, "C")
+    ax_c.set_title("Condition comparison per module", fontsize=7.5)
+    ax_c.tick_params(labelsize=5.5)
+
+    # ── Panel D: Spatial dominant-module maps ──────────────────────────────────
+    has_spatial = ("x_centroid" in adata.obs.columns and
+                   "y_centroid" in adata.obs.columns)
+
+    all_dom_labels = [module_names[i] if i >= 0 else "unassigned" for i in dom_idx]
+    all_dom_colours = [
+        _MODULE_COLOURS.get(lb, "#CCCCCC") for lb in all_dom_labels
+    ]
+
+    for ax_d, cond in [(ax_d0, cond_a), (ax_d1, cond_b)]:
+        slide_id = representative_slides.get(cond) if representative_slides else None
+        if slide_id and slide_col in adata.obs.columns:
+            slide_mask = (adata.obs[slide_col] == slide_id).values
+        else:
+            slide_mask = (adata.obs[condition_key] == cond).values
+
+        if not has_spatial or slide_mask.sum() == 0:
+            ax_d.text(0.5, 0.5, f"No spatial data\n({cond})",
+                      ha="center", va="center", fontsize=6,
+                      transform=ax_d.transAxes)
+            ax_d.set_aspect("equal")
+            ax_d.axis("off")
+            ax_d.set_title(cond, fontsize=6)
+            continue
+
+        x = adata.obs.loc[slide_mask, "x_centroid"].values
+        y = adata.obs.loc[slide_mask, "y_centroid"].values
+        colours_slide = np.array(all_dom_colours)[slide_mask]
+
+        ax_d.scatter(x, -y, c=colours_slide, s=1.2, alpha=0.7,
+                     linewidths=0, rasterized=True)
+        ax_d.set_aspect("equal")
+        ax_d.tick_params(left=False, bottom=False,
+                         labelleft=False, labelbottom=False)
+        ax_d.spines[["left", "bottom", "top", "right"]].set_visible(False)
+        ax_d.set_title(cond, fontsize=6, pad=2)
+
+    _panel_label(ax_d0, "D")
+
+    # Gene-count annotation per module
+    gene_note = "  |  ".join(
+        f"{n.split(chr(10))[0]}: {k}g" for n, k in zip(module_names, n_genes_list)
+    )
+    fig.text(
+        0.5, 0.01, gene_note, ha="center", va="bottom",
+        fontsize=4.5, color="#666666",
+    )
+
+    fig.suptitle(
+        "Neuropeptide co-expression modules — AGED vs ADULT (MBH)",
+        fontsize=9, y=0.97,
+    )
+
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5, rect=[0, 0.04, 1, 0.96])
+
+    out = _savefig(fig, output_dir / "fig17_neuropeptide_modules", fmt=fmt, dpi=dpi)
+    plt.close(fig)
     return out

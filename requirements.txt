@@ -39,5 +39,8 @@ adjustText >= 1.1         # optional; gracefully skipped if absent
 # ── HVG selection (seurat_v3 flavor) ────────────────────────────────────────
 scikit-misc >= 0.3       # required for seurat_v3 HVG; installs skmisc
 
+# ── Statistics ────────────────────────────────────────────────────────────────
+statsmodels >= 0.14       # multipletests (BH correction) used in fig17 + composition
+
 # ── Utilities ─────────────────────────────────────────────────────────────────
 tqdm >= 4.66

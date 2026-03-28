@@ -17,9 +17,9 @@ inject_css()
 for k, v in {
     "panel_mode": "partial_union", "min_slides": 2,
     "dge_method": "stringent_wilcoxon", "leiden_resolution": 0.6,
-    "n_neighbors": 12, "min_counts": 10, "max_counts": 2000,
-    "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
-    "pval_threshold": 0.01, "n_top_genes": 200, "harmony_max_iter": 20,
+    "n_neighbors": 12, "min_counts": 10, "max_counts": 5000,
+    "min_genes": 10, "max_genes": 500, "log2fc_threshold": 1.0,
+    "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 20,
     "roi_mode": "polygon", "figure_format": "pdf", "dpi": 300,
 }.items():
     if k not in st.session_state:
@@ -101,7 +101,7 @@ with qc3:
     st.session_state["min_genes"] = int(v)
 
 with qc4:
-    v = st.number_input("Max genes per cell", 50, 500,
+    v = st.number_input("Max genes per cell", 50, 1000,
                          st.session_state["max_genes"])
     st.session_state["max_genes"] = int(v)
 
@@ -238,7 +238,7 @@ st.subheader("Differential gene expression")
 d1, d2, d3 = st.columns(3)
 
 with d1:
-    _methods = ["stringent_wilcoxon", "wilcoxon", "pydeseq2"]
+    _methods = ["stringent_wilcoxon", "wilcoxon", "pydeseq2", "cside"]
     _current = st.session_state["dge_method"]
     if _current not in _methods:
         _current = "stringent_wilcoxon"
@@ -250,6 +250,7 @@ with d1:
             "stringent_wilcoxon": "★ Stringent Wilcoxon (recommended)",
             "wilcoxon"          : "Wilcoxon rank-sum (permissive)",
             "pydeseq2"          : "PyDESeq2 pseudobulk (n≥8 replicates needed)",
+            "cside"             : "C-SIDE pseudobulk (spatial, multi-replicate)",
         }[x],
         help=(
             "Stringent Wilcoxon applies Wilcoxon then filters to: "
@@ -275,6 +276,13 @@ with d1:
         st.info(
             "ℹ️ PyDESeq2 is statistically correct but typically finds no "
             "significant genes at n=4 replicates per condition due to low power."
+        )
+    elif method == "cside":
+        st.info(
+            "ℹ️ **C-SIDE pseudobulk** (Cable 2022, *Nat Methods*): per-cell-type "
+            "pseudobulk aggregation by slide, then PyDESeq2. Uses real biological "
+            "replicates — the only published method designed for multi-replicate "
+            "spatial DGE. Requires `adata.layers['counts']` (raw integer counts)."
         )
 
 with d2:

@@ -182,14 +182,33 @@ class XeniumDGEPipeline:
         if self.adata is None:
             self.preprocess()
 
+        dge_kwargs = {}
+        if self.cfg.dge_method == "pydeseq2":
+            dge_kwargs["min_cells"] = self.cfg.dge_min_cells
+        elif self.cfg.dge_method == "stringent_wilcoxon":
+            # Auto-detect number of replicates and adjust consistency threshold
+            rep_key = "slide_id"
+            if rep_key in self.adata.obs.columns:
+                for cond in [self.cfg.condition_a_label, self.cfg.condition_b_label]:
+                    n_reps = self.adata.obs.loc[
+                        self.adata.obs[self.cfg.dge_group_key] == cond, rep_key
+                    ].nunique()
+                    if n_reps < 3:
+                        dge_kwargs["min_consistent_replicates"] = max(1, n_reps)
+                        logger.warning(
+                            "Only %d replicate(s) for '%s'; reducing "
+                            "min_consistent_replicates to %d.",
+                            n_reps, cond, dge_kwargs["min_consistent_replicates"],
+                        )
+                        break
+
         self.dge_results = run_dge(
             self.adata,
             method        = self.cfg.dge_method,
             condition_key = self.cfg.dge_group_key,
             condition_a   = self.cfg.condition_a_label,
             condition_b   = self.cfg.condition_b_label,
-            # min_cells only used by pydeseq2; forwarded via kwargs if needed
-            **({"min_cells": self.cfg.dge_min_cells} if self.cfg.dge_method == "pydeseq2" else {}),
+            **dge_kwargs,
         )
 
         # Save raw results
@@ -269,7 +288,14 @@ class XeniumDGEPipeline:
             & (sig[lfc_col].abs() > self.cfg.dge_log2fc_threshold)
         ]
         top_genes = sig.nlargest(6, lfc_col)[g_col].tolist()
-        if top_genes:
+        if not top_genes:
+            logger.warning(
+                "Figure 7 skipped — no genes pass the DGE thresholds "
+                "(pval_adj < %.2g, |log2FC| > %.2g). "
+                "Try relaxing dge_pval_threshold or dge_log2fc_threshold.",
+                self.cfg.dge_pval_threshold, self.cfg.dge_log2fc_threshold,
+            )
+        else:
             fig_module.plot_spatial_expression(
                 self.adata, genes=top_genes, condition_key=ck,
                 spot_size=self.cfg.spot_size, output_dir=out, fmt=fmt, dpi=dpi,
@@ -303,7 +329,7 @@ class XeniumDGEPipeline:
     # ------------------------------------------------------------------
 
     def _log_summary(self):
-        elapsed = time.time() - self._t0
+        elapsed = time.time() - self._t0 if self._t0 is not None else 0
         n_cells = self.adata.n_obs if self.adata is not None else "N/A"
         n_genes = self.adata.n_vars if self.adata is not None else "N/A"
         n_clusters = (

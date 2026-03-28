@@ -44,7 +44,7 @@ Or right-click → Get Info → copy the *Where* path.
 Check **⚙️ Pipeline Settings**. The defaults are sensible for an MBH study.
 Key decisions:
 - **Panel mode:** `partial_union` (recommended) keeps base genes + shared custom genes
-- **DGE method:** `stringent_wilcoxon` (default, recommended); `wilcoxon` for speed; `pydeseq2` requires n≥8 replicates
+- **DGE method:** `stringent_wilcoxon` (default, recommended); `wilcoxon` for speed; `pydeseq2` for pseudobulk; `cside` for per-cell-type pseudobulk DESeq2 (Cable 2022, recommended for publication)
 - **min_slides:** How many slides a custom gene must appear in to be retained (default 2)
 
 ### 3 — ROI Manager
@@ -146,16 +146,16 @@ with tab_params:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | min_counts | 10 | Cells with fewer total transcripts are removed |
-| max_counts | 2000 | Cells above this are likely doublets |
-| min_genes | 5 | Cells with fewer unique genes are removed |
-| max_genes | 300 | Upper gene count filter |
+| max_counts | 5000 | Cells above this are likely doublets |
+| min_genes | 10 | Cells with fewer unique genes are removed |
+| max_genes | 500 | Upper gene count filter |
 
 ### Preprocessing
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| n_top_genes | 200 | Highly variable genes for PCA. Must be ≤ panel size (~297) |
-| leiden_resolution | 0.5 | Higher = more, smaller clusters |
-| n_neighbors | 15 | KNN graph neighbours for UMAP and clustering |
+| n_top_genes | 0 | Highly variable genes for PCA (0 = disabled, use all genes — recommended for Xenium) |
+| leiden_resolution | 0.6 | Higher = more, smaller clusters |
+| n_neighbors | 12 | KNN graph neighbours for UMAP and clustering |
 | harmony_max_iter | 20 | Harmony batch correction iterations |
 
 **Important:** `harmony_key` is always `slide_id` (not condition).
@@ -165,7 +165,7 @@ the biological AGED vs ADULT signal.
 ### DGE
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| dge_method | stringent_wilcoxon | `stringent_wilcoxon` (recommended), `wilcoxon`, or `pydeseq2` (pseudobulk) |
+| dge_method | stringent_wilcoxon | `stringent_wilcoxon` (recommended), `wilcoxon`, `pydeseq2` (pseudobulk), or `cside` (per-cell-type pseudobulk DESeq2, Cable 2022) |
 | log2fc_threshold | 1.0 | Minimum |log₂FC| for significance (stringent_wilcoxon uses this) |
 | pval_threshold | 0.01 | Adjusted p-value threshold (stringent_wilcoxon uses this) |
 
@@ -174,6 +174,13 @@ the biological AGED vs ADULT signal.
 |-----------|---------|-------------|
 | panel_mode | partial_union | How to harmonise custom genes across slides |
 | min_slides | 2 | Custom genes must appear in ≥ this many slides |
+
+### ROI & Figures
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| roi_mode | polygon | ROI drawing mode: `polygon` (click vertices), `lasso` (freehand), or `rectangle` |
+| figure_format | pdf | Output format: `pdf` (editable, recommended), `png`, or `svg` |
+| dpi | 300 | Figure resolution: 150, 300, or 600 DPI |
 """)
 
 with tab_figs:
@@ -182,10 +189,10 @@ with tab_figs:
 
 All figures follow **Nature Publishing Group** standards:
 - Column widths: 89 mm (single) / 183 mm (double column)
-- Font: Arial 7 pt body, 8 pt axis titles
+- Font: Arial, 6 pt minimum (body), 7 pt axis labels, 8 pt axis titles
 - 300 DPI minimum
 - Editable PDFs: Type 42 embedded fonts (open in Adobe Illustrator / Affinity Publisher)
-- Wong (2011) colour-blind-safe palette
+- Wong (2011) colour-blind-safe palette for conditions; tab20 extended for >8 clusters
 
 | Figure | Description |
 |--------|-------------|
@@ -202,6 +209,10 @@ All figures follow **Nature Publishing Group** standards:
 | fig11_cluster_dge | Per-cluster DEG counts (panel a), bubble chart of top DEGs per cluster (panel b) |
 | fig12_slide_qc | Per-slide cell counts, transcript yield, condition balance |
 | fig13_panel_qc | Panel composition bars + custom gene presence heatmap + UpSet histogram |
+| fig14_insulin | Insulin/metabolic signalling gene panel across cell types |
+| fig15_galanin | Galanin (Gal): spatial maps ADULT/AGED (panels a,b), split violin per cell type (c), per-cell-type log₂FC lollipop with BH-corrected significance (d) |
+| fig16_composition | Cell type composition testing: stacked proportion bars per replicate (a), forest plot of log₂FC per cell type with credible intervals and significance (b); scCODA Bayesian model (Büttner 2021) with CLR+Welch t-test fallback |
+| fig17_neuropeptide_modules | Neuropeptide co-expression modules: UMAP coloured by dominant module (a), z-scored mean score per cell type × module heatmap (b), AGED vs ADULT grouped bar with Mann-Whitney significance (c), spatial dominant-module maps per condition (d). Modules: AgRP/NPY, POMC/CART, KNDy, Somatostatin, TRH/Dopamine, Galanin. |
 """)
 
 with tab_trouble:
@@ -212,7 +223,7 @@ with tab_trouble:
 Activate the conda environment before starting the app:
 ```bash
 conda activate xenium_dge
-streamlit run app/app.py
+cd app && streamlit run app.py
 ```
 
 **`cell_feature_matrix/ not found`**
@@ -227,10 +238,11 @@ Paste x,y pairs (µm) one per line and click Save.
 Check `panel_validation.csv` in the output directory.
 If `n_custom = 0` for a slide, lower `min_slides` in Settings or switch to `union` mode.
 
-**PyDESeq2 is slow**
-PyDESeq2 pseudobulk with 4 replicates is the correct method for publication but
-takes longer than Wilcoxon. Use Wilcoxon for exploratory runs and switch to
-PyDESeq2 for final figures.
+**PyDESeq2 finds no significant genes**
+PyDESeq2 pseudobulk requires ≥ 8 biological replicates per condition to have
+adequate power. With n=4 per group it typically returns no significant results.
+Use **Stringent Wilcoxon** (recommended for n=4) or **C-SIDE pseudobulk** for
+per-cell-type analysis. PyDESeq2 is included for studies with larger n.
 
 **Pipeline log shows `harmony` error**
 ```bash
@@ -249,6 +261,13 @@ The scatter is automatically subsampled to 15,000 cells for display speed.
 
 st.divider()
 st.markdown(
-    "**Citation:** Wolf et al. (scanpy) · Korsunsky et al. (Harmony) · "
-    "Muzellec et al. (PyDESeq2) · McInnes et al. (UMAP) · 10x Genomics (Xenium)"
+    "**Key references:** "
+    "Wolf et al. 2018 (scanpy) · "
+    "Korsunsky et al. 2019 (Harmony) · "
+    "Muzellec et al. 2023 (PyDESeq2) · "
+    "McInnes et al. 2018 (UMAP) · "
+    "Büttner et al. 2021 *Nat Commun* (scCODA) · "
+    "Cable et al. 2022 *Nat Methods* (C-SIDE) · "
+    "Wong 2011 *Nat Methods* (colour palette) · "
+    "10x Genomics (Xenium)"
 )

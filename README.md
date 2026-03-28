@@ -11,7 +11,7 @@ Runs entirely on your Mac. No data leaves your machine.
 
 ---
 
-## Two ways to run
+## Three ways to run
 
 ### Option A — Local web interface (recommended)
 A multi-page web app that opens in your browser. Point-and-click for everything:
@@ -94,7 +94,7 @@ a colour-coded log panel (green = ok, amber = warning, red = error). A Stop butt
 is always available. The page auto-refreshes every 1.5 seconds while running.
 
 ### 📊 Results
-All 13 figures displayed inline with a dropdown selector and thumbnail gallery.
+All 17 figures displayed inline with a dropdown selector and thumbnail gallery.
 Individual download buttons for each figure. Separate tabs for:
 
   Global DGE table        searchable by gene name, colour-coded by log2FC
@@ -122,9 +122,9 @@ each gene by comparing names against the base panel CSV.
 
 Harmonisation modes:
 
-  intersection      247 base genes only, no custom genes, zero zero-inflation
-  partial_union *   base + custom genes present in >= min_slides slides (default 2)
-  union             base + all custom genes, maximum zero-inflation
+  intersection        247 base genes only, no custom genes, zero zero-inflation
+  partial_union ✓     base + custom genes present in >= min_slides slides (default 2) — recommended
+  union               base + all custom genes, maximum zero-inflation
 
 In partial_union mode, slides missing a retained custom gene receive a zero-filled
 column flagged in adata.var['zero_filled'].
@@ -148,6 +148,13 @@ All figures and data files are written to the output directory you set in Study 
   fig11_cluster_dge.pdf     Per-cluster DEG bubble chart
   fig12_slide_qc.pdf        Per-slide cell counts, transcript yield, condition balance
   fig13_panel_qc.pdf        Panel composition + custom gene overlap heatmap
+  fig14_insulin.pdf         Insulin / metabolic signalling gene panel across cell types
+  fig15_galanin.pdf         Galanin spatial maps, split violin per cell type, log2FC lollipop
+  fig16_composition.pdf     Cell type composition testing (scCODA + CLR t-test fallback)
+  fig17_neuropeptide_modules.pdf  Neuropeptide co-expression modules (AgRP/NPY, POMC/CART,
+                            KNDy, Somatostatin, TRH/Dopamine, Galanin): UMAP dominant
+                            assignment, per-cell-type z-scored heatmap, AGED vs ADULT
+                            bar comparison with Mann-Whitney significance, spatial maps
 
   global_dge_aged_vs_adult.csv    Full DGE results table
   cluster_dge_results.csv         Per-cluster DGE
@@ -157,8 +164,8 @@ All figures and data files are written to the output directory you set in Study 
   adata_mbh_final.h5ad            Final annotated AnnData
 
 All figures follow Nature Publishing Group standards: column widths 89/183 mm,
-Arial 7 pt body text, 300 DPI, editable PDF with Type 42 embedded fonts.
-Colour-blind-safe Wong (2011) palette throughout.
+Arial 6 pt minimum body text (7 pt labels, 8 pt titles), 300 DPI, editable PDF
+with Type 42 embedded fonts. Colour-blind-safe Wong (2011) palette throughout.
 
 ---
 
@@ -179,11 +186,11 @@ Colour-blind-safe Wong (2011) palette throughout.
     │       ├── 3_roi_manager.py     Interactive ROI drawing (Plotly)
     │       ├── 4_run.py             Launch pipeline + live log
     │       ├── 5_results.py         Figure viewer + downloads
-    │       └── 6_help.py            Inline documentation
+    │       ├── 6_gene_explorer.py   On-demand spatial expression map for any gene
+    │       └── 7_help.py            Inline documentation
     │
     ├── run_xenium_mbh.py            End-to-end pipeline for the 4+4 AGED/ADULT MBH study
     │                                (single production entry point — used by app, launcher, CLI)
-    ├── launcher.py                  Tkinter GUI launcher
     ├── plot_gene.py                 CLI spatial expression map for any gene
     │
     │
@@ -200,22 +207,35 @@ Colour-blind-safe Wong (2011) palette throughout.
         ├── roi_selector.py          Matplotlib ROI tool (CLI mode)
         ├── config.py                PipelineConfig dataclass
         ├── preprocessing.py         QC, HVG, PCA, Harmony, UMAP, Leiden
-        ├── dge_analysis.py          PyDESeq2 pseudobulk + Wilcoxon DGE
+        ├── dge_analysis.py          PyDESeq2 pseudobulk + Wilcoxon + C-SIDE DGE
         ├── cell_type_annotation.py  Marker scoring, correlation, threshold annotation
         ├── cluster_dge.py           Per-cluster / per-cell-type DGE
+        ├── composition_analysis.py  Cell type composition testing (scCODA + CLR fallback)
         ├── spatial_stats.py         Moran's I, co-expression, neighbourhood enrichment
         ├── pipeline.py              Two-condition pipeline orchestrator
         ├── figures.py               Nature-grade figures 1-8
-        ├── figures_extended.py      Nature-grade figures 9-11
-        └── figures_panel.py         Nature-grade figure 13 (panel QC)
+        ├── figures_extended.py      Nature-grade figures 9-11, 14-17
+        └── figures_panel.py         Nature-grade figures 12-13 (slide/panel QC)
 
 ---
 
 ## DGE methods
 
-  Wilcoxon rank-sum   Cell-level test. Fast. Good for exploration.
-  PyDESeq2            Pseudobulk: cells aggregated per replicate, then DESeq2.
-                      Recommended for publication with 4 true biological replicates.
+  stringent_wilcoxon  Cell-level Wilcoxon + post-hoc filters: |log2FC| >= 1,
+                      adj-p < 0.01, >= 10% cells expressing, consistent direction
+                      in >= 3/4 replicates. Recommended for n=4 per condition.
+
+  wilcoxon            Plain cell-level Wilcoxon rank-sum. Fast; inflated p-values
+                      with large cell counts. Use for exploration only.
+
+  pydeseq2            Pseudobulk DESeq2: cells aggregated per slide replicate.
+                      Statistically correct but low power at n=4 — typically
+                      returns no significant genes. Use when n >= 8 per condition.
+
+  cside               C-SIDE pseudobulk (Cable et al. 2022, Nat Methods): per-cell-
+                      type aggregation by slide replicate, then DESeq2. The only
+                      published method designed for multi-replicate spatial DGE.
+                      Recommended for publication when cell type labels are available.
 
 Switch in Settings page or set CFG.dge_method in run_xenium_mbh.py.
 
@@ -241,6 +261,7 @@ See requirements.txt. Key packages:
   anndata >= 0.10
   harmonypy >= 0.0.9         Batch correction
   pydeseq2 >= 0.4            Pseudobulk DGE (optional, wilcoxon is fallback)
+  statsmodels >= 0.14        BH multiple-testing correction (fig17, composition)
   leidenalg >= 0.10          Clustering
   pyarrow >= 14.0            Parquet support
 
@@ -279,4 +300,7 @@ leidenalg ImportError
   PyDESeq2:  Muzellec et al., Bioinformatics 2023
   UMAP:      McInnes et al., JOSS 2018
   Leiden:    Traag et al., Scientific Reports 2019
+  scCODA:    Büttner et al., Nature Communications 2021
+  C-SIDE:    Cable et al., Nature Methods 2022
+  palette:   Wong, Nature Methods 2011
   Xenium:    10x Genomics Xenium In Situ platform

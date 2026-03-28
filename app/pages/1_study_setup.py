@@ -33,7 +33,16 @@ for k, v in {
         st.session_state[k] = v
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-CONDITION_COLOURS = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+# Wong 2011 colour-blind-safe palette; blue first, then vermillion
+_WONG_POOL = ["#0072B2", "#D55E00", "#E69F00", "#009E73", "#CC79A7", "#56B4E9"]
+
+def _condition_colours() -> dict:
+    """Build condition → colour from the slides currently in session state."""
+    conds = sorted({s["condition"] for s in st.session_state.get("slides", []) if s["condition"]})
+    return {c: _WONG_POOL[i % len(_WONG_POOL)] for i, c in enumerate(conds)}
+
+# Keep a module-level alias updated on each render
+CONDITION_COLOURS = _condition_colours()
 
 def _xenium_dir_status(path_str: str) -> tuple[bool, str]:
     """Return (valid, message) for a Xenium run directory.
@@ -68,8 +77,8 @@ def _xenium_dir_status(path_str: str) -> tuple[bool, str]:
 page_header("📁 Study Setup", "Configure Xenium run directories for all 8 slides")
 st.markdown(
     "Enter the path to each Xenium output directory. "
-    "Each folder must contain `cell_feature_matrix/`, `cells.parquet`, "
-    "and `experiment.xenium`."
+    "Each folder must contain `cell_feature_matrix/` (with `matrix.mtx.gz`, "
+    "`barcodes.tsv.gz`, `features.tsv.gz`) and `cells.parquet`."
 )
 st.info(
     "💡 **Tip:** On macOS, right-click a folder in Finder → "
@@ -146,9 +155,8 @@ for i, slide in enumerate(slides):
                 # Derive base panel count from the CSV rather than hardcoding 247.
                 # Fall back to 247 only if the CSV cannot be read.
                 try:
-                    import pandas as _pd
                     _base_csv = Path(st.session_state.get("base_panel_csv", ""))
-                    n_predesigned = len(_pd.read_csv(_base_csv)) if _base_csv.exists() else 247
+                    n_predesigned = len(pd.read_csv(_base_csv)) if _base_csv.exists() else 247
                 except Exception:
                     n_predesigned = 247
                 n_custom      = max(0, n_rna - n_predesigned)
@@ -176,8 +184,8 @@ for i, slide in enumerate(slides):
                     f"{control_str}",
                     unsafe_allow_html=True,
                 )
-            except Exception:
-                pass
+            except Exception as _e:
+                st.caption(f"Could not read gene counts: {_e}")
 
     if i == 3:  # separator between AGED and ADULT
         st.divider()
@@ -225,9 +233,12 @@ with col_a:
         help="Polygon ROIs for each slide are stored here as JSON files.",
     )
     st.session_state["roi_cache_dir"] = roi_dir
-    Path(roi_dir).mkdir(parents=True, exist_ok=True)
-    n_saved = len(list(Path(roi_dir).glob("*_roi.json")))
-    st.caption(f"{n_saved} ROI file(s) saved")
+    roi_path = Path(roi_dir)
+    if roi_path.exists():
+        n_saved = len(list(roi_path.glob("*_roi.json")))
+        st.caption(f"{n_saved} ROI file(s) saved")
+    else:
+        st.caption("Directory will be created when the pipeline runs.")
 
 with col_b:
     out = st.text_input(
@@ -236,7 +247,6 @@ with col_b:
         help="All figures and results files are written here.",
     )
     st.session_state["output_dir"] = out
-    Path(out).mkdir(parents=True, exist_ok=True)
     st.caption(f"Will be created if it does not exist: {out}")
 
 # ── Save / load config ────────────────────────────────────────────────────────

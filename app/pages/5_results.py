@@ -71,6 +71,10 @@ FIGURE_CATALOG = [
     ("fig11_cluster_dge",    "Per-cluster DEG bubble chart"),
     ("fig12_slide_qc",       "Per-slide QC + MBH yield"),
     ("fig13_panel_qc",       "Panel composition + custom gene overlap"),
+    ("fig14_insulin",        "Insulin pathway spatial expression"),
+    ("fig15_galanin",        "Galanin spatial maps, violin & log₂FC lollipop"),
+    ("fig16_composition",    "Cell type composition (scCODA)"),
+    ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
 ]
 
 # ── Page ──────────────────────────────────────────────────────────────────────
@@ -148,6 +152,9 @@ with tab_dge:
         lfc_col = "log2fc"
         p_col   = "pval_adj"
         g_col   = "gene" if "gene" in df.columns else df.columns[0]
+        if lfc_col not in df.columns or p_col not in df.columns:
+            st.error(f"DGE CSV is missing expected columns (`{lfc_col}`, `{p_col}`). Found: {list(df.columns)}")
+            st.stop()
 
         _p_thr  = float(st.session_state.get("pval_threshold",  0.01))
         _lfc_thr = float(st.session_state.get("log2fc_threshold", 1.0))

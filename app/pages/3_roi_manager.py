@@ -151,7 +151,15 @@ def _count_in_polygon(cells_df, verts) -> int:
 def _export_all() -> str:
     export = {}
     for sid, verts in st.session_state["roi_polygons"].items():
+        p = _roi_path(sid)
+        n_cells = 0
+        if p.exists():
+            try:
+                n_cells = json.loads(p.read_text()).get("n_cells_selected", 0)
+            except Exception:
+                pass
         export[sid] = {"vertices": verts, "roi_name": "MBH",
+                       "n_cells_selected": n_cells,
                        "exported_at": datetime.now().isoformat()}
     return json.dumps(export, indent=2)
 
@@ -356,11 +364,29 @@ with ctrl_col:
                               key=f"load_{selected_id}",
                               help="Restore saved ROI values into the sliders for editing"):
                     sv = np.array(saved_verts)
-                    st.session_state[f"sl_x0_{selected_id}"] = int(sv[:,0].min())
-                    st.session_state[f"sl_x1_{selected_id}"] = int(sv[:,0].max())
-                    st.session_state[f"sl_y0_{selected_id}"] = int(sv[:,1].min())
-                    st.session_state[f"sl_y1_{selected_id}"] = int(sv[:,1].max())
-                    st.rerun()
+                    xs, ys = sv[:, 0], sv[:, 1]
+                    # Sliders only represent axis-aligned rectangles. Warn if the
+                    # saved ROI is a non-rectangular polygon — loading would silently
+                    # replace it with a larger bounding box, selecting extra cells.
+                    is_rect = (
+                        len(saved_verts) == 4
+                        and len(set(xs.round(1))) == 2
+                        and len(set(ys.round(1))) == 2
+                    )
+                    if not is_rect:
+                        st.warning(
+                            f"This ROI has {len(saved_verts)} vertices and is not a "
+                            "rectangle. Loading it into the sliders will use its "
+                            "**bounding box**, which is larger and will include cells "
+                            "outside the original boundary. Use the Plotly polygon "
+                            "tool to redraw if you need a non-rectangular ROI."
+                        )
+                    else:
+                        st.session_state[f"sl_x0_{selected_id}"] = int(xs.min())
+                        st.session_state[f"sl_x1_{selected_id}"] = int(xs.max())
+                        st.session_state[f"sl_y0_{selected_id}"] = int(ys.min())
+                        st.session_state[f"sl_y1_{selected_id}"] = int(ys.max())
+                        st.rerun()
 
         # Copy to other slides
         if saved_verts and _count_in_polygon(cells_df, saved_verts) > 0 and len(slides) > 1:
@@ -391,8 +417,11 @@ with ctrl_col:
             if st.button("Save pasted ROI", key=f"load_paste_{selected_id}"):
                 try:
                     lines = [l.strip() for l in paste.strip().splitlines() if l.strip()]
-                    verts = [[float(v) for v in l.replace(";",",").split(",")[:2]]
+                    verts = [[float(v.strip()) for v in l.replace(";", ",").split(",")
+                              if v.strip()][:2]
                              for l in lines]
+                    if any(len(v) != 2 for v in verts):
+                        raise ValueError("Each line must contain exactly 2 values (x, y).")
                     if len(verts) >= 3:
                         n_p = _count_in_polygon(cells_df, verts)
                         if n_p == 0:

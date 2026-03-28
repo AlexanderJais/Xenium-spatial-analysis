@@ -72,7 +72,71 @@ def run_cluster_dge(
     """
     from src.dge_analysis import run_dge
 
-    groups = sorted(adata.obs[group_key].unique(), key=lambda x: (0, int(x)) if str(x).lstrip('-').isdigit() else (1, str(x)))
+    # C-SIDE runs all cell types in a single call (per-cell-type pseudobulk DESeq2).
+    # It already returns the canonical long-format DataFrame with a 'group' column,
+    # so we bypass the per-group loop entirely.
+    if method == "cside":
+        from src.dge_analysis import cside_pseudobulk_dge
+
+        if condition_a is None or condition_b is None:
+            conditions = adata.obs[condition_key].unique().tolist()
+            if len(conditions) != 2:
+                raise ValueError(
+                    f"Found {len(conditions)} conditions; specify condition_a/b."
+                )
+            condition_a, condition_b = sorted(conditions)
+
+        combined = cside_pseudobulk_dge(
+            adata,
+            cell_type_key=group_key,
+            condition_key=condition_key,
+            replicate_key=replicate_key or "slide_id",
+            condition_a=condition_a,
+            condition_b=condition_b,
+            min_cells_per_sample=min_cells_per_condition,
+        )
+
+        if combined.empty:
+            logger.warning("C-SIDE returned no results.")
+            return pd.DataFrame()
+
+        combined["significant"] = (
+            (combined["pval_adj"] < pval_thresh)
+            & (combined["log2fc"].abs() >= log2fc_thresh)
+        )
+        combined["direction"] = "ns"
+        combined.loc[combined["significant"] & (combined["log2fc"] > 0), "direction"] = "up"
+        combined.loc[combined["significant"] & (combined["log2fc"] < 0), "direction"] = "down"
+
+        if output_dir is not None:
+            from pathlib import Path
+            out = Path(output_dir)
+            out.mkdir(parents=True, exist_ok=True)
+            combined.to_csv(out / "cluster_dge_results.csv", index=False)
+            logger.info("Saved C-SIDE cluster DGE results to %s/", out)
+
+        return combined
+
+    # Remove zero-filled custom genes once before the cluster loop.
+    # Each cluster subset would otherwise re-apply the masking redundantly,
+    # and the zero_filled flags are consistent across all clusters.
+    if "zero_filled" in adata.var.columns:
+        keep = ~adata.var["zero_filled"].fillna(False)
+        n_excl = int((~keep).sum())
+        if n_excl > 0:
+            logger.info(
+                "run_cluster_dge: excluding %d zero-filled custom gene(s) "
+                "from all cluster-level tests.",
+                n_excl,
+            )
+            adata = adata[:, keep].copy()
+
+    def _sort_key(x):
+        try:
+            return (0, int(x))
+        except (ValueError, TypeError):
+            return (1, str(x))
+    groups = sorted(adata.obs[group_key].unique(), key=_sort_key)
     conditions = adata.obs[condition_key].unique().tolist()
 
     if condition_a is None or condition_b is None:
@@ -105,6 +169,11 @@ def run_cluster_dge(
         )
 
         try:
+            # Only forward lfc/pval thresholds to stringent_wilcoxon; other
+            # methods (wilcoxon, pydeseq2) ignore them and emit spurious warnings.
+            sw_kwargs = {}
+            if method == "stringent_wilcoxon":
+                sw_kwargs = {"lfc_threshold": log2fc_thresh, "pval_threshold": pval_thresh}
             res = run_dge(
                 sub,
                 method=method,
@@ -112,10 +181,7 @@ def run_cluster_dge(
                 condition_a=condition_a,
                 condition_b=condition_b,
                 replicate_key=replicate_key,
-                # Forward the user's thresholds so stringent_wilcoxon's internal
-                # filters use the same values as the post-hoc significance flags.
-                lfc_threshold=log2fc_thresh,
-                pval_threshold=pval_thresh,
+                **sw_kwargs,
             )
         except Exception as exc:
             logger.warning("DGE failed for group '%s': %s", grp, exc)
@@ -130,7 +196,7 @@ def run_cluster_dge(
         # Significance flag — uses canonical column names guaranteed by run_dge()
         res["significant"] = (
             (res["pval_adj"] < pval_thresh)
-            & (res["log2fc"].abs() > log2fc_thresh)
+            & (res["log2fc"].abs() >= log2fc_thresh)
         )
         res["direction"] = "ns"
         res.loc[res["significant"] & (res["log2fc"] > 0), "direction"] = "up"

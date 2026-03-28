@@ -81,6 +81,12 @@ class PipelineConfig:
     filter_control_probes: bool = True   # remove cells with control_probe_counts > 0
     filter_control_codewords: bool = True  # remove cells with control_codeword_counts > 0
 
+    # ── Cell area QC ──────────────────────────────────────────────────────
+    # Cells with area < min_cell_area µm² are very likely partial segmentation
+    # captures at tissue edges. Default 20 µm² per Janesick et al. 2023.
+    # Set to 0 to disable (applied only if 'cell_area' is in obs).
+    min_cell_area: float = 20.0
+
     # ── Cell area normalization ───────────────────────────────────────────
     # Normalise expression by cell area after library-size normalisation.
     # Reduces spatial technical confound from variable cell sizes in brain tissue
@@ -119,12 +125,24 @@ class PipelineConfig:
     # ------------------------------------------------------------------
     # Differential gene expression
     # ------------------------------------------------------------------
-    dge_method: str = "stringent_wilcoxon"  # "stringent_wilcoxon" | "wilcoxon" | "pydeseq2" | "t-test"
+    dge_method: str = "stringent_wilcoxon"  # "stringent_wilcoxon" | "wilcoxon" | "pydeseq2" | "cside" | "t-test"
     dge_group_key: str = "condition"
     dge_min_cells: int = 5
     dge_log2fc_threshold: float = 1.0    # aligned with stringent_wilcoxon
     dge_pval_threshold: float = 0.01     # aligned with stringent_wilcoxon
     n_top_dge_genes: int = 20      # genes to label on volcano
+
+    # ------------------------------------------------------------------
+    # Composition analysis (scCODA)
+    # ------------------------------------------------------------------
+    # scCODA (Büttner et al. 2021, Nat Commun 12:6876) tests whether cell type
+    # proportions differ between conditions using a Bayesian Dirichlet-multinomial
+    # model.  This is statistically valid at n=4 (no normal-distribution assumption)
+    # and is the recommended primary analysis for testing compositional changes.
+    # Requires pertpy; falls back to CLR + Welch t-test if not installed.
+    run_sccoda: bool = True
+    sccoda_reference_cell_type: str = "auto"  # "auto" = largest cell type; or e.g. "Astrocyte"
+    sccoda_n_mcmc_samples: int = 20_000
 
     # ------------------------------------------------------------------
     # Spatial

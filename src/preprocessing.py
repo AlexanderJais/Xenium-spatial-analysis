@@ -6,11 +6,9 @@ Harmony integration, UMAP and Leiden clustering for Xenium data.
 """
 
 import logging
-from typing import Optional
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 import scanpy as sc
 
 logger = logging.getLogger(__name__)
@@ -24,11 +22,12 @@ def run_qc(
     adata: ad.AnnData,
     min_counts: int = 10,
     max_counts: int = 5_000,
-    min_genes: int = 5,
+    min_genes: int = 10,
     max_genes: int = 500,
     min_cells_per_gene: int = 10,
     filter_control_probes: bool = True,
     filter_control_codewords: bool = True,
+    min_cell_area: float = 20.0,
     inplace: bool = True,
 ) -> ad.AnnData:
     """
@@ -49,6 +48,11 @@ def run_qc(
         Unique-gene count thresholds per cell.
     min_cells_per_gene:
         Genes detected in fewer than this many cells are removed.
+    min_cell_area:
+        Minimum cell segmentation area in µm². Cells below this threshold are
+        almost certainly partial captures (cell fragments at tissue edges or
+        section boundaries). Default 20 µm² per Janesick et al. 2023. Set to 0
+        to disable. Only applied when ``adata.obs['cell_area']`` exists.
     filter_control_probes:
         Remove cells where control_probe_counts > 0.  These are cells that
         captured at least one non-biological probe signal — 10x Genomics
@@ -90,6 +94,17 @@ def run_qc(
         & (adata.obs["n_genes_by_counts"] >= min_genes)
         & (adata.obs["n_genes_by_counts"] <= max_genes)
     )
+
+    # ── Cell area filter (Xenium-specific) ───────────────────────────────
+    # Remove partial captures: cells with area < min_cell_area µm² are likely
+    # segmentation fragments at tissue edges (Janesick et al. 2023).
+    n_area_removed = 0
+    if min_cell_area > 0 and "cell_area" in adata.obs.columns:
+        area_vals = adata.obs["cell_area"].values.astype(float)
+        area_mask = (area_vals >= min_cell_area) & np.isfinite(area_vals)
+        n_area_removed = int((~area_mask).sum())
+        mask_cells = mask_cells & area_mask
+        logger.info("QC: %d cells removed (cell_area < %.1f µm²)", n_area_removed, min_cell_area)
 
     # ── Negative control probe filters (Xenium-specific) ─────────────────
     # The Mouse Brain panel has 27 negative control probe sets.  Any cell
@@ -144,12 +159,17 @@ def run_qc(
 
 def _apply_cell_area_norm(adata: ad.AnnData, enabled: bool) -> None:
     """
-    Optionally divide log-normalised expression by cell area (in situ).
+    Optionally scale expression by cell area (in situ).
+
+    Should be called BEFORE library-size normalisation and log-transform
+    so that the division happens in linear count space:
+        log1p(counts * median_area / cell_area)
+    rather than in log space (which would be log(x)^a, a non-linear distortion).
 
     This corrects for the spatial technical confound in brain tissue where
     neurons have much larger cross-sectional areas than glia, and partially-
     captured surface cells appear artificially small.  Applied in-place to
-    adata.X and adata.layers['lognorm'].
+    adata.X (and adata.layers['lognorm'] if it exists).
 
     Only runs if enabled=True AND adata.obs['cell_area'] exists and is > 0.
     """
@@ -182,11 +202,12 @@ def _apply_cell_area_norm(adata: ad.AnnData, enabled: bool) -> None:
     else:
         adata.X = adata.X * scale[:, None]
 
-    if "lognorm" in adata.layers:
-        if _sp.issparse(adata.layers["lognorm"]):
-            adata.layers["lognorm"] = adata.layers["lognorm"].multiply(scale[:, None]).tocsr()
-        else:
-            adata.layers["lognorm"] = adata.layers["lognorm"] * scale[:, None]
+    # NOTE: do NOT apply area scaling to an existing 'lognorm' layer here.
+    # This function must be called BEFORE log-transform (see docstring), so
+    # 'lognorm' does not yet exist at the point of a correct call. Applying
+    # the scale factor to an already-log-transformed layer would compute
+    # log(x) * scale = log(x^scale), a non-linear power distortion — exactly
+    # what the ordering requirement is designed to prevent.
 
     logger.info(
         "Cell area normalisation applied (median area = %.1f µm²; "
@@ -202,6 +223,7 @@ def normalise_and_select_hvg(
     n_top_genes: int = 0,
     normalize_by_cell_area: bool = False,
     flavor: str = "seurat_v3",
+    batch_key: str = "condition",
 ) -> ad.AnnData:
     """
     Normalise counts and log-transform.  HVG selection is skipped by default.
@@ -222,7 +244,8 @@ def normalise_and_select_hvg(
     adata:
         QC-filtered AnnData (raw counts in .X or .layers['counts']).
     target_sum:
-        Library-size normalisation target (default 10 000).
+        Library-size normalisation target (default 100, tuned for Xenium
+        targeted panels of ~100-500 genes; scRNA-seq convention is 1e4).
     n_top_genes:
         If 0 (default) or >= adata.n_vars, skip HVG selection and use all
         genes for PCA.  Set to a positive integer smaller than the panel
@@ -232,8 +255,9 @@ def normalise_and_select_hvg(
         log-normalised expression by its cross-sectional area (in square
         microns).  Reduces the spatial technical confound caused by variable
         cell sizes in brain tissue (neurons are dramatically larger than glia
-        and partially-captured surface cells are smaller).  Applied after
-        library-size normalisation and log transformation.  Default False.
+        and partially-captured surface cells are smaller).  Applied BEFORE
+        library-size normalisation so the scaling occurs in linear count space:
+        log1p(counts × median_area / cell_area).  Default False.
     flavor:
         HVG method used only when n_top_genes is active.
 
@@ -246,10 +270,21 @@ def normalise_and_select_hvg(
     if "counts" in adata.layers:
         adata.X = adata.layers["counts"].copy()
 
+    # Preserve raw counts before any normalisation.  Required by pseudobulk
+    # DESeq2 (pseudobulk_deseq2) and C-SIDE (cside_pseudobulk_dge) which need
+    # integer counts.  The layer is saved here regardless of whether counts
+    # was already in layers so it is always available after this function.
+    if "counts" not in adata.layers:
+        adata.layers["counts"] = adata.X.copy()
+
     run_hvg = (n_top_genes > 0) and (n_top_genes < adata.n_vars)
 
     if not run_hvg:
         # Targeted panel path (recommended for Xenium): use ALL genes.
+        # Cell area normalization must be applied BEFORE log-transform so
+        # that division happens in linear space: log(counts/area) rather
+        # than log(counts) * scale, which would distort the distribution.
+        _apply_cell_area_norm(adata, normalize_by_cell_area)
         sc.pp.normalize_total(adata, target_sum=target_sum)
         sc.pp.log1p(adata)
         adata.layers["lognorm"] = adata.X.copy()
@@ -260,7 +295,6 @@ def normalise_and_select_hvg(
             "(targeted panel; n_top_genes=%d).",
             adata.n_vars, n_top_genes,
         )
-        _apply_cell_area_norm(adata, normalize_by_cell_area)
         return adata
 
     # HVG path — only reached when explicitly requested
@@ -280,7 +314,7 @@ def normalise_and_select_hvg(
     if _effective_flavor == "seurat_v3":
         sc.pp.highly_variable_genes(
             adata, n_top_genes=n_top_genes,
-            flavor="seurat_v3", batch_key="condition", subset=False,
+            flavor="seurat_v3", batch_key=batch_key, subset=False,
         )
         logger.info(
             "Selected %d highly variable genes (of %d total) using seurat_v3",
@@ -295,7 +329,7 @@ def normalise_and_select_hvg(
         adata.layers["lognorm"] = adata.X.copy()
         sc.pp.highly_variable_genes(
             adata, n_top_genes=n_top_genes,
-            flavor=_effective_flavor, batch_key="condition", subset=False,
+            flavor=_effective_flavor, batch_key=batch_key, subset=False,
         )
         logger.info(
             "Selected %d highly variable genes (of %d total) using %s",
@@ -394,6 +428,29 @@ def run_harmony(
         )
         adata.obsm["X_pca_harmony"] = adata.obsm["X_pca"].copy()
         return adata
+
+    # Warn when each batch corresponds to exactly one biological replicate per
+    # condition — i.e. slides ARE the replicates. Harmony will then correct for
+    # between-replicate variation, which partially removes biological signal that
+    # is replicate-consistent (Korsunsky et al. 2019, Tran et al. 2020).
+    if "condition" in adata.obs.columns:
+        batches_per_cond = (
+            adata.obs.groupby("condition")[batch_key].nunique()
+        )
+        total_batches = n_batches
+        n_conditions = adata.obs["condition"].nunique()
+        if batches_per_cond.sum() == total_batches:
+            # every batch belongs to exactly one condition
+            logger.warning(
+                "Harmony: batch_key='%s' has %d unique values across %d conditions "
+                "(%s). Each batch is a separate biological replicate — Harmony will "
+                "correct between-replicate variation, risking partial removal of "
+                "true biological signal. Verify post-Harmony UMAP still separates "
+                "conditions. Consider using Harmony only for true technical batches "
+                "(multiple slides from the same animal).",
+                batch_key, total_batches, n_conditions,
+                ", ".join(f"{c}: {n}" for c, n in batches_per_cond.items()),
+            )
 
     logger.info("Running Harmony integration on key '%s' (%d batches) …", batch_key, n_batches)
 
@@ -600,6 +657,7 @@ def find_marker_genes(
     method: str = "wilcoxon",
     n_genes: int = 25,
     use_raw: bool = False,
+    reference: str = "rest",
 ) -> ad.AnnData:
     """
     Rank genes per cluster using Wilcoxon rank-sum (or t-test).
@@ -617,7 +675,23 @@ def find_marker_genes(
     use_raw:
         Whether to use .raw or .X for the test. Keep False when .X
         holds log-normalised values.
+    reference:
+        Reference group for the comparison. Default 'rest' (all other clusters
+        pooled). WARNING: 'rest' is a heterogeneous mixture, which deflates
+        fold changes and produces asymmetric comparisons across clusters
+        (Squair et al. 2021, Nature Communications). For publication-quality
+        marker genes, consider pairwise comparisons by calling this function
+        once per cluster with ``reference`` set to a specific other cluster.
     """
+    if reference == "rest":
+        logger.warning(
+            "find_marker_genes: reference='rest' compares each cluster against "
+            "a pooled mixture of all other clusters. This deflates fold changes "
+            "and makes results asymmetric across clusters. For Xenium targeted "
+            "panels, consider pairwise comparisons (reference=<cluster_name>) "
+            "or use condition-level DGE via run_cluster_dge() instead."
+        )
+
     # Use log-normalised values for the test, but work on a shallow copy so
     # we do not silently leave the caller's .X pointing at the lognorm layer.
     if "lognorm" in adata.layers:
@@ -627,12 +701,13 @@ def find_marker_genes(
     sc.tl.rank_genes_groups(
         adata,
         groupby=groupby,
+        reference=reference,
         method=method,
         n_genes=n_genes,
         use_raw=use_raw,
         pts=True,        # store fraction of cells expressing gene
     )
-    logger.info("Marker genes computed for %s.", groupby)
+    logger.info("Marker genes computed for %s (reference='%s').", groupby, reference)
     return adata
 
 
@@ -662,6 +737,7 @@ def full_preprocessing_pipeline(adata: ad.AnnData, cfg) -> ad.AnnData:
         min_cells_per_gene       = cfg.min_cells_per_gene,
         filter_control_probes    = getattr(cfg, "filter_control_probes",    True),
         filter_control_codewords = getattr(cfg, "filter_control_codewords", True),
+        min_cell_area            = getattr(cfg, "min_cell_area",            20.0),
     )
     adata = normalise_and_select_hvg(
         adata,

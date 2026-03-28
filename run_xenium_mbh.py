@@ -73,11 +73,6 @@ from src import figures as fig_module
 from src import figures_extended as fe
 from src import figures_panel as fp
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-    datefmt="%H:%M:%S",
-)
 logger = logging.getLogger("AgedAdultPipeline")
 
 
@@ -161,8 +156,10 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Set up console + file logging before anything else so every module's
-    # output is captured from the very first log message.
+    # Reconfigure logging for main() so file handler captures everything.
+    # basicConfig is a no-op if handlers already exist, so clear first.
+    root = logging.getLogger()
+    root.handlers.clear()
     logging.basicConfig(
         level   = logging.INFO,
         format  = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
@@ -346,7 +343,6 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         # THIS run — not from a hardcoded cluster-number lookup that would
         # silently mislabel clusters whenever resolution, QC, or cell count
         # changes between runs.
-        from src.cell_type_annotation import assign_labels_from_markers
         adata = assign_labels_from_markers(
             adata,
             cluster_key = CFG.cluster_key,
@@ -663,6 +659,81 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         logger.info("Fig 14 skipped — cluster DGE not available.")
 
     # ------------------------------------------------------------------
+    # Fig 15: Galanin (Gal) expression in the ageing MBH
+    # ------------------------------------------------------------------
+    # representative_slides is set on CFG in Step 4; use it directly here
+    representative_slides = CFG.representative_slides
+    try:
+        fe.plot_galanin_panel(
+            adata                = adata,
+            dge_results          = dge,
+            condition_key        = "condition",
+            cluster_key          = group_key,
+            cell_type_key        = "cell_type",
+            representative_slides= representative_slides,
+            output_dir           = OUTPUT_DIR,
+            fmt                  = CFG.figure_format,
+            dpi                  = CFG.dpi,
+        )
+    except Exception as e:
+        logger.warning("Fig 15 (galanin panel) failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # Fig 16: Cell type composition testing (scCODA)
+    # ------------------------------------------------------------------
+    if getattr(CFG, "run_sccoda", True) and "cell_type" in adata.obs.columns:
+        logger.info("Step 9b: Cell type composition testing (scCODA) …")
+        try:
+            from src.composition_analysis import run_sccoda
+            composition_results = run_sccoda(
+                adata,
+                cell_type_key         = "cell_type",
+                condition_key         = "condition",
+                replicate_key         = "slide_id",
+                reference_cell_type   = getattr(CFG, "sccoda_reference_cell_type", "auto"),
+                n_mcmc_samples        = getattr(CFG, "sccoda_n_mcmc_samples", 20_000),
+                output_dir            = OUTPUT_DIR,
+            )
+            logger.info(
+                "Composition testing complete: %d cell types, %d significant",
+                len(composition_results),
+                composition_results["significant"].sum() if not composition_results.empty else 0,
+            )
+
+            fe.plot_composition_panel(
+                composition_results = composition_results,
+                adata               = adata,
+                cell_type_key       = "cell_type",
+                condition_key       = "condition",
+                replicate_key       = "slide_id",
+                output_dir          = OUTPUT_DIR,
+                fmt                 = CFG.figure_format,
+                dpi                 = CFG.dpi,
+            )
+        except Exception as e:
+            logger.warning("Fig 16 (composition panel) failed: %s", e)
+            composition_results = None
+    else:
+        logger.info("Fig 16 skipped (run_sccoda=False or no cell_type annotation).")
+        composition_results = None
+
+    # ------------------------------------------------------------------
+    # Fig 17: Neuropeptide co-expression modules
+    # ------------------------------------------------------------------
+    try:
+        fe.plot_neuropeptide_modules(
+            adata                = adata,
+            condition_key        = "condition",
+            cell_type_key        = "cell_type",
+            representative_slides= CFG.representative_slides,
+            output_dir           = OUTPUT_DIR,
+            fmt                  = CFG.figure_format,
+            dpi                  = CFG.dpi,
+        )
+    except Exception as e:
+        logger.warning("Fig 17 (neuropeptide modules) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
@@ -688,9 +759,10 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
 
     apply_nature_style()
 
-    slides = adata.obs["slide_id"].cat.categories.tolist()
+    slides = sorted(adata.obs["slide_id"].astype("category").cat.categories.tolist())
     cond_of_slide = adata.obs.groupby("slide_id", observed=True)["condition"].first()
-    cond_pal = {"AGED": "#D55E00", "ADULT": "#0072B2"}
+    conds_sorted = sorted(adata.obs["condition"].unique())
+    cond_pal = {c: WONG[i % len(WONG)] for i, c in enumerate(conds_sorted)}
 
     fig = plt.figure(figsize=(DOUBLE, 2.8))
     gs  = gridspec.GridSpec(1, 3, figure=fig, wspace=0.45)
@@ -705,18 +777,20 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
     n_cells = [( adata.obs["slide_id"] == s).sum() for s in slides]
     ax1.bar(x_pos, n_cells, color=colours, width=0.6, linewidth=0)
     ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(slides, rotation=45, ha="right", fontsize=5.5)
+    ax1.set_xticklabels(slides, rotation=45, ha="right", fontsize=6)
     ax1.set_ylabel("Cells in MBH ROI")
     ax1.set_title("Cells per slide")
 
     # Median counts
+    count_col = "total_counts" if "total_counts" in adata.obs.columns else "n_counts"
     med_counts = [
-        adata.obs.loc[adata.obs["slide_id"] == s, "total_counts"].median()
+        adata.obs.loc[adata.obs["slide_id"] == s, count_col].median()
+        if count_col in adata.obs.columns else 0
         for s in slides
     ]
     ax2.bar(x_pos, med_counts, color=colours, width=0.6, linewidth=0)
     ax2.set_xticks(x_pos)
-    ax2.set_xticklabels(slides, rotation=45, ha="right", fontsize=5.5)
+    ax2.set_xticklabels(slides, rotation=45, ha="right", fontsize=6)
     ax2.set_ylabel("Median total counts")
     ax2.set_title("Transcript yield")
 
@@ -774,7 +848,9 @@ def _print_figure_index(out: Path):
         ("fig11_cluster_dge",     "Per-cluster DEG counts + bubble chart"),
         ("fig12_slide_qc",        "Per-slide QC + MBH yield overview"),
         ("fig13_panel_qc",        "Panel composition + custom gene overlap QC"),
-        ("fig14_insulin_signalling", "Insulin & metabolic signalling panel"),
+        ("fig14_insulin",            "Insulin & metabolic signalling panel"),
+        ("fig15_galanin",           "Galanin (Gal) expression across cell types"),
+        ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
     ]
     for name, desc in table:
         f = out / f"{name}.pdf"
