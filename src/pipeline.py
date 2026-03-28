@@ -288,7 +288,14 @@ class XeniumDGEPipeline:
             & (sig[lfc_col].abs() > self.cfg.dge_log2fc_threshold)
         ]
         top_genes = sig.nlargest(6, lfc_col)[g_col].tolist()
-        if top_genes:
+        if not top_genes:
+            logger.warning(
+                "Figure 7 skipped — no genes pass the DGE thresholds "
+                "(pval_adj < %.2g, |log2FC| > %.2g). "
+                "Try relaxing dge_pval_threshold or dge_log2fc_threshold.",
+                self.cfg.dge_pval_threshold, self.cfg.dge_log2fc_threshold,
+            )
+        else:
             fig_module.plot_spatial_expression(
                 self.adata, genes=top_genes, condition_key=ck,
                 spot_size=self.cfg.spot_size, output_dir=out, fmt=fmt, dpi=dpi,
