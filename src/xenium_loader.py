@@ -360,13 +360,22 @@ def _align_cells_to_barcodes(
     except (ValueError, TypeError):
         pass
 
-    # Strategy 4: same row count -> positional alignment (last resort)
+    # Strategy 4: same row count — last-resort positional alignment.
+    # WARNING: this assumes cells_df rows are in the same order as barcodes.tsv.gz.
+    # If they differ (e.g. cells.parquet sorted spatially vs barcodes sorted by
+    # detection order), spatial coordinates will be silently mis-assigned.
+    # Strategies 1-3 cover all standard Xenium output formats; reaching here
+    # means the data format is unexpected.
     if len(cells_df) == n_bc:
         result = cells_df.copy()
         result.index = pd.Index(barcodes_str)
-        logger.info(
-            "  -> cells aligned positionally (%d rows == %d barcodes)",
-            len(cells_df), n_bc,
+        logger.warning(
+            "Slide '%s': falling back to POSITIONAL alignment "
+            "(%d rows == %d barcodes) because no cell_id column or index match "
+            "was found. This is only correct if cells.parquet rows are in the "
+            "same order as barcodes.tsv.gz — verify your data if spatial "
+            "coordinates look wrong.",
+            slide_id, len(cells_df), n_bc,
         )
         return result
 
