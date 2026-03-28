@@ -77,8 +77,8 @@ def _xenium_dir_status(path_str: str) -> tuple[bool, str]:
 page_header("📁 Study Setup", "Configure Xenium run directories for all 8 slides")
 st.markdown(
     "Enter the path to each Xenium output directory. "
-    "Each folder must contain `cell_feature_matrix/`, `cells.parquet`, "
-    "and `experiment.xenium`."
+    "Each folder must contain `cell_feature_matrix/` (with `matrix.mtx.gz`, "
+    "`barcodes.tsv.gz`, `features.tsv.gz`) and `cells.parquet`."
 )
 st.info(
     "💡 **Tip:** On macOS, right-click a folder in Finder → "

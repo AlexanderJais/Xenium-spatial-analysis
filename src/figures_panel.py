@@ -214,14 +214,13 @@ def _plot_presence_heatmap(ax, matrix, slide_ids, conditions, fig):
 
     # Split into condition annotation + heatmap
     from matplotlib.gridspec import GridSpecFromSubplotSpec
-    parent_gs = ax.get_gridspec()
-    pos = ax.get_position()
+    subplot_spec = ax.get_subplotspec()   # works regardless of parent GridSpec shape
     ax.remove()
 
-    # Re-create as two stacked axes sharing the column
+    # Re-create as two stacked axes sharing the same subplot cell
     sub_gs = gridspec.GridSpecFromSubplotSpec(
         2, 1,
-        subplot_spec=parent_gs[0, 1],
+        subplot_spec=subplot_spec,
         height_ratios=[0.05, 1],
         hspace=0.02,
     )
