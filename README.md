@@ -11,7 +11,7 @@ Runs entirely on your Mac. No data leaves your machine.
 
 ---
 
-## Two ways to run
+## Three ways to run
 
 ### Option A — Local web interface (recommended)
 A multi-page web app that opens in your browser. Point-and-click for everything:
@@ -122,9 +122,9 @@ each gene by comparing names against the base panel CSV.
 
 Harmonisation modes:
 
-  intersection      247 base genes only, no custom genes, zero zero-inflation
-  partial_union *   base + custom genes present in >= min_slides slides (default 2)
-  union             base + all custom genes, maximum zero-inflation
+  intersection        247 base genes only, no custom genes, zero zero-inflation
+  partial_union ✓     base + custom genes present in >= min_slides slides (default 2) — recommended
+  union               base + all custom genes, maximum zero-inflation
 
 In partial_union mode, slides missing a retained custom gene receive a zero-filled
 column flagged in adata.var['zero_filled'].
@@ -191,7 +191,6 @@ with Type 42 embedded fonts. Colour-blind-safe Wong (2011) palette throughout.
     │
     ├── run_xenium_mbh.py            End-to-end pipeline for the 4+4 AGED/ADULT MBH study
     │                                (single production entry point — used by app, launcher, CLI)
-    ├── launcher.py                  Tkinter GUI launcher
     ├── plot_gene.py                 CLI spatial expression map for any gene
     │
     │
@@ -262,6 +261,7 @@ See requirements.txt. Key packages:
   anndata >= 0.10
   harmonypy >= 0.0.9         Batch correction
   pydeseq2 >= 0.4            Pseudobulk DGE (optional, wilcoxon is fallback)
+  statsmodels >= 0.14        BH multiple-testing correction (fig17, composition)
   leidenalg >= 0.10          Clustering
   pyarrow >= 14.0            Parquet support
 

@@ -101,7 +101,7 @@ Rename Slide IDs in the text boxes if needed (e.g. `AGED_Bregma-1.8`).
 |--------|---------------|
 | **DGE method** | **stringent_wilcoxon** (default) — cell-level Wilcoxon with post-hoc replication filter; best for n=4 per condition. Use **cside** (Cable et al. 2022) for per-cell-type pseudobulk DESeq2 (publication). **pydeseq2** needs ≥8 replicates to have power. |
 | **Panel mode** | **partial_union** (default) — keeps base genes + custom genes present in ≥2 slides. Recommended for this study. |
-| **ROI mode** | **Polygon** — click vertices around the MBH on each section. A dashed atlas hint ellipse is shown. |
+| **ROI drawing mode** | **Polygon** (default) — click vertices around the MBH boundary. Alternatives: Lasso (freehand) or Rectangle. Set in ⚙️ Settings. |
 
 ---
 

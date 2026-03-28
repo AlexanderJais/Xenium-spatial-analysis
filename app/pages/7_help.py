@@ -174,6 +174,13 @@ the biological AGED vs ADULT signal.
 |-----------|---------|-------------|
 | panel_mode | partial_union | How to harmonise custom genes across slides |
 | min_slides | 2 | Custom genes must appear in ≥ this many slides |
+
+### ROI & Figures
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| roi_mode | polygon | ROI drawing mode: `polygon` (click vertices), `lasso` (freehand), or `rectangle` |
+| figure_format | pdf | Output format: `pdf` (editable, recommended), `png`, or `svg` |
+| dpi | 300 | Figure resolution: 150, 300, or 600 DPI |
 """)
 
 with tab_figs:
@@ -216,7 +223,7 @@ with tab_trouble:
 Activate the conda environment before starting the app:
 ```bash
 conda activate xenium_dge
-streamlit run app/app.py
+cd app && streamlit run app.py
 ```
 
 **`cell_feature_matrix/ not found`**
