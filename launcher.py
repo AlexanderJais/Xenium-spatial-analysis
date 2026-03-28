@@ -339,7 +339,8 @@ class XeniumLauncher(tk.Tk):
         self._dge_method_var = tk.StringVar(value="stringent_wilcoxon")
         for val, lab in [("stringent_wilcoxon", "★ Stringent Wilcoxon (recommended)"),
                          ("wilcoxon", "Wilcoxon (fast, permissive)"),
-                         ("pydeseq2", "PyDESeq2 pseudobulk (n≥8 needed)")]:
+                         ("pydeseq2", "PyDESeq2 pseudobulk (n≥8 needed)"),
+                         ("cside",    "C-SIDE pseudobulk (per-cell-type)")]:
             tk.Radiobutton(r1, text=lab, variable=self._dge_method_var, value=val,
                            font=FONT_SMALL, bg=BG, fg=ACCENT_DARK,
                            activebackground=BG, selectcolor=BG,

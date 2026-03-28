@@ -80,7 +80,10 @@ def _n_slides() -> int:
 out = Path(st.session_state["output_dir"])
 
 def _n_figs() -> int:
-    return len(list(out.glob("fig*.pdf"))) if out.exists() else 0
+    if not out.exists():
+        return 0
+    return len({p.stem for p in out.glob("fig*.*")
+                if p.suffix in (".pdf", ".png", ".svg")})
 
 def _pipeline_done() -> bool:
     return st.session_state.get("pipeline_returncode") == 0
@@ -310,7 +313,7 @@ with left:
         1: "pages/1_study_setup.py",
         2: "pages/2_settings.py",
         3: "pages/3_roi_manager.py",
-        4: "pages/4_run_pipeline.py",
+        4: "pages/4_run.py",
         5: "pages/5_results.py",
     }
     CTA_LABELS = {
@@ -344,7 +347,7 @@ with right:
         "t-test"            : "t-test",
     }
     dge_label   = dge_method_labels.get(st.session_state["dge_method"], st.session_state["dge_method"])
-    n_figs_disp = n_figs if n_figs > 0 else "16 (planned)"
+    n_figs_disp = n_figs if n_figs > 0 else "17 (planned)"
     panel_mode_label = {
         "partial_union": "Partial union",
         "intersection" : "Intersection",
