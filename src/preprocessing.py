@@ -22,7 +22,7 @@ def run_qc(
     adata: ad.AnnData,
     min_counts: int = 10,
     max_counts: int = 5_000,
-    min_genes: int = 5,
+    min_genes: int = 10,
     max_genes: int = 500,
     min_cells_per_gene: int = 10,
     filter_control_probes: bool = True,
