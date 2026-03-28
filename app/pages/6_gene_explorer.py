@@ -36,7 +36,9 @@ if str(_ROOT) not in sys.path:
 
 # ── Session defaults ──────────────────────────────────────────────────────────
 for k, v in {
-    "output_dir": str(Path.home() / "xenium_dge_output"),
+    "output_dir":      str(Path.home() / "xenium_dge_output"),
+    "_pdf_cache_gene":  None,   # gene name for which PDF was last generated
+    "_pdf_cache_bytes": None,   # cached PDF bytes (persists across reruns)
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -51,10 +53,12 @@ GREY_RED = mcolors.LinearSegmentedColormap.from_list(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner="Loading AnnData from cache…")
-def _load_adata(cache_path: str, _mtime: float):
-    """Load AnnData. _mtime is the file modification time — changing it
-    automatically invalidates this cache when the file is updated on disk
-    (e.g. after a new pipeline run). Users no longer need to restart the app."""
+def _load_adata(cache_path: str, mtime: float):
+    """Load AnnData, keyed by (cache_path, mtime).
+    mtime is the file modification time — changing it (i.e. a new pipeline run)
+    automatically invalidates this cache entry so the updated file is loaded.
+    Note: parameters starting with '_' are excluded from Streamlit's cache key,
+    which is why mtime must NOT have an underscore prefix here."""
     import anndata as ad
     return ad.read_h5ad(cache_path)
 
@@ -223,7 +227,7 @@ if gene_input:
         else:
             close = [g for g in adata.var_names if gene_input.lower() in g.lower()]
             st.error(
-                f"**'{gene_input}' not found** in the 307-gene panel."
+                f"**'{gene_input}' not found** in the {adata.n_vars}-gene panel."
                 + (f"  Did you mean: **{', '.join(close[:5])}**?" if close else "")
             )
             st.stop()
@@ -244,14 +248,20 @@ if gene_input:
             use_container_width=True,
         )
     with dl_col2:
-        # High-res PDF for publication
-        if st.button("⬇️ Download PDF (300 dpi)", use_container_width=True):
+        # High-res PDF: generate on demand and cache in session state so the
+        # download button persists across reruns (st.download_button inside an
+        # if-st.button block disappears on the rerun triggered by the download).
+        if st.button("⬇️ Prepare PDF (300 dpi)", use_container_width=True):
             with st.spinner("Rendering high-res PDF…"):
-                pdf_bytes = _plot_gene(adata, gene, spot_size, vmax_pct,
-                                       fmt="pdf", dpi=300)
+                st.session_state["_pdf_cache_gene"]  = gene
+                st.session_state["_pdf_cache_bytes"] = _plot_gene(
+                    adata, gene, spot_size, vmax_pct, fmt="pdf", dpi=300
+                )
+        if (st.session_state.get("_pdf_cache_gene") == gene
+                and st.session_state.get("_pdf_cache_bytes")):
             st.download_button(
                 "📄 Save PDF",
-                data=pdf_bytes,
+                data=st.session_state["_pdf_cache_bytes"],
                 file_name=f"{gene}_spatial_all_slides.pdf",
                 mime="application/pdf",
                 use_container_width=True,
