@@ -146,9 +146,9 @@ with tab_params:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | min_counts | 10 | Cells with fewer total transcripts are removed |
-| max_counts | 5000 | Cells above this are likely doublets |
+| max_counts | 2000 | Cells above this are likely doublets (lower than scRNA-seq because the ~307-gene panel yields fewer transcripts) |
 | min_genes | 10 | Cells with fewer unique genes are removed |
-| max_genes | 500 | Upper gene count filter |
+| max_genes | 300 | Upper gene count filter (panel has ~307 genes total) |
 
 ### Preprocessing
 | Parameter | Default | Description |
@@ -156,7 +156,7 @@ with tab_params:
 | n_top_genes | 0 | Highly variable genes for PCA (0 = disabled, use all genes — recommended for Xenium) |
 | leiden_resolution | 0.6 | Higher = more, smaller clusters |
 | n_neighbors | 12 | KNN graph neighbours for UMAP and clustering |
-| harmony_max_iter | 20 | Harmony batch correction iterations |
+| harmony_max_iter | 30 | Harmony batch correction iterations (30 for robust convergence across 8 slides) |
 
 **Important:** `harmony_key` is always `slide_id` (not condition).
 This corrects technical variation between the 8 slides while preserving

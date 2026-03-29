@@ -184,19 +184,22 @@ The web app and launcher can save/load a JSON configuration file so you never ne
   "leiden_resolution": 0.6,
   "n_neighbors": 12,
   "min_counts": 10,
-  "max_counts": 5000,
+  "max_counts": 2000,
   "min_genes": 10,
-  "max_genes": 500,
+  "max_genes": 300,
   "n_top_genes": 0,
-  "harmony_max_iter": 20,
+  "harmony_max_iter": 30,
   "log2fc_threshold": 1.0,
   "pval_threshold": 0.01,
+  "filter_control_probes": true,
+  "filter_control_codewords": true,
+  "normalize_by_cell_area": false,
   "figure_format": "pdf",
   "dpi": 300
 }
 ```
 
-Only `slides` and `output_dir` are required. All other fields fall back to defaults if omitted.
+Only `slides` and `output_dir` are required. All other fields fall back to Xenium-tuned defaults if omitted. Notably: `max_counts=2000` and `max_genes=300` are lower than typical scRNA-seq settings because the ~307-gene Xenium panel yields far fewer transcripts per cell.
 
 ---
 

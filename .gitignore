@@ -15,21 +15,24 @@ xenium_dge/
 
 # Cache directories
 .cache_mbh/
+*_cache/
 roi_cache/
 
 # Output data
 *.h5ad
 *.h5
+*.log
 
 # Figures output (keep structure, ignore generated files)
 outputs/
+*_output/
+figures_output/
 
 # Jupyter
 .ipynb_checkpoints/
 
 # macOS
 .DS_Store
-*.command
 
 # IDE
 .vscode/

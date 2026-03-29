@@ -39,6 +39,11 @@ adjustText >= 1.1         # optional; gracefully skipped if absent
 # ── HVG selection (seurat_v3 flavor) ────────────────────────────────────────
 scikit-misc >= 0.3       # required for seurat_v3 HVG; installs skmisc
 
+# ── Composition analysis ─────────────────────────────────────────────────────
+# pertpy >= 0.7          # optional; enables scCODA Bayesian composition testing
+                          # Falls back to CLR + Welch t-test if not installed.
+                          # Install manually: pip install pertpy
+
 # ── Statistics ────────────────────────────────────────────────────────────────
 statsmodels >= 0.14       # multipletests (BH correction) used in fig17 + composition
 

@@ -62,10 +62,10 @@ class PipelineConfig:
     # QC thresholds
     # ------------------------------------------------------------------
     min_counts: int = 10          # minimum transcript counts per cell
-    max_counts: int = 5_000       # cap for doublet/artefact removal
+    max_counts: int = 2_000       # cap for doublet/artefact removal (Xenium panels yield fewer transcripts than scRNA-seq)
     min_genes: int = 10           # minimum unique genes per cell (raised for Xenium 307-gene panel)
-    max_genes: int = 500
-    min_cells_per_gene: int = 10  # genes expressed in < N cells are dropped
+    max_genes: int = 300          # upper gene count filter (Xenium panel is ~307 genes total)
+    min_cells_per_gene: int = 5   # genes expressed in < N cells are dropped
 
     # ------------------------------------------------------------------
     # Preprocessing
@@ -100,13 +100,13 @@ class PipelineConfig:
     # working from raw transcript files (.parquet with qv column), apply
     # qv_threshold = 20 at load time.  This pipeline uses the XOA matrix
     # so Q20 is already enforced upstream.
-    n_pcs: int = 50               # PCs for dimensionality reduction
+    n_pcs: int = 30               # PCs for dimensionality reduction (30 is sufficient for ~307-gene Xenium panels)
 
     # ------------------------------------------------------------------
     # Integration (Harmony)
     # ------------------------------------------------------------------
     harmony_key: str = "slide_id"      # MUST be slide_id, not condition -- correcting on condition removes the biological signal you are testing
-    harmony_max_iter: int = 20
+    harmony_max_iter: int = 30    # 30 iterations for robust convergence across 8 slides
 
     # ------------------------------------------------------------------
     # Neighbourhood graph & UMAP
@@ -130,7 +130,7 @@ class PipelineConfig:
     dge_min_cells: int = 5
     dge_log2fc_threshold: float = 1.0    # aligned with stringent_wilcoxon
     dge_pval_threshold: float = 0.01     # aligned with stringent_wilcoxon
-    n_top_dge_genes: int = 20      # genes to label on volcano
+    n_top_dge_genes: int = 25      # genes to label on volcano
 
     # ------------------------------------------------------------------
     # Composition analysis (scCODA)
