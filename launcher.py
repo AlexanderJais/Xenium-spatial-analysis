@@ -733,7 +733,12 @@ class XeniumLauncher(tk.Tk):
         )
         if not path:
             return
-        cfg = json.loads(Path(path).read_text())
+        try:
+            cfg = json.loads(Path(path).read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            self._log_line(f"Failed to load config: {exc}", "err")
+            self._status("Config load failed", "err")
+            return
         self._apply_config(cfg)
         self._log_line(f"Config loaded: {path}", "ok")
         self._status("Config loaded", "ok")

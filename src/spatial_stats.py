@@ -294,6 +294,19 @@ def neighborhood_enrichment(
     labels = adata.obs[cell_type_key].values.astype(str)
     cell_types = sorted(set(labels))
 
+    if len(xy) < 4:
+        logger.warning(
+            "neighborhood_enrichment: need at least 4 cells, got %d — "
+            "returning empty results.", len(xy),
+        )
+        n_ct = len(cell_types)
+        empty = pd.DataFrame(
+            np.full((n_ct, n_ct), np.nan),
+            index=cell_types, columns=cell_types,
+        )
+        return {"observed": empty, "z_score": empty.copy(),
+                "p_value": empty.copy(), "p_adj": empty.copy()}
+
     tree = cKDTree(xy)
     _k = min(n_neighbors, len(xy) - 1)
     _, nbr_idx = tree.query(xy, k=_k + 1)
@@ -457,6 +470,10 @@ def _build_knn_weights(xy: np.ndarray, k: int) -> tuple[sp.csr_matrix, sp.csr_ma
     variance and inflates z-scores for dense spatial regions.
     """
     N = len(xy)
+    if N < 2:
+        # Cannot build a neighbourhood with fewer than 2 cells
+        empty = sp.csr_matrix((N, N), dtype=np.float64)
+        return empty, empty.copy()
     # Cap k so we never request more neighbours than cells available
     k = min(k, N - 1)
     tree = cKDTree(xy)

@@ -902,6 +902,16 @@ def _apply_launcher_config(config_path: str):
     CFG.max_genes            = int(lcfg.get("max_genes",             CFG.max_genes))
     CFG.n_top_genes          = int(lcfg.get("n_top_genes",           CFG.n_top_genes))
     CFG.harmony_max_iter     = int(lcfg.get("harmony_max_iter",      CFG.harmony_max_iter))
+
+    # Validate bounds for critical numeric parameters
+    if CFG.leiden_resolution <= 0:
+        raise ValueError(f"leiden_resolution must be > 0, got {CFG.leiden_resolution}")
+    if not (2 <= CFG.n_neighbors <= 200):
+        raise ValueError(f"n_neighbors must be 2–200, got {CFG.n_neighbors}")
+    if CFG.min_counts < 0 or CFG.min_genes < 0:
+        raise ValueError("min_counts and min_genes must be >= 0")
+    if CFG.n_top_genes < 10:
+        raise ValueError(f"n_top_genes must be >= 10, got {CFG.n_top_genes}")
     CFG.dge_log2fc_threshold    = float(lcfg.get("log2fc_threshold",       CFG.dge_log2fc_threshold))
     CFG.filter_control_probes   = bool(lcfg.get("filter_control_probes",   CFG.filter_control_probes))
     CFG.filter_control_codewords= bool(lcfg.get("filter_control_codewords",CFG.filter_control_codewords))

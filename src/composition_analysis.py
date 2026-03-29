@@ -127,7 +127,10 @@ def run_sccoda(
         )
     except Exception as exc:
         logger.warning(
-            "scCODA (pertpy) failed: %s — falling back to CLR + Welch t-test.", exc
+            "scCODA (pertpy) failed: %s — falling back to CLR + Welch t-test. "
+            "Results will use a different statistical method than requested. "
+            "Install pertpy and scCODA for Bayesian composition analysis.",
+            exc,
         )
         results = _run_clr_ttest(comp_df, condition_key=condition_key, fdr_target=fdr_target)
         results["method"] = "CLR_ttest"

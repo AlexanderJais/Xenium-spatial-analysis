@@ -170,9 +170,19 @@ def _import_rois(json_str: str) -> tuple[int, str]:
         n = 0
         for sid, entry in data.items():
             verts = entry.get("vertices") or entry
-            if isinstance(verts, list) and len(verts) >= 3:
-                _save_roi(sid, verts, entry.get("n_cells_selected") or 0)
-                n += 1
+            if not isinstance(verts, list) or len(verts) < 3:
+                continue
+            # Validate each vertex is a pair of numbers
+            valid = True
+            for v in verts:
+                if (not isinstance(v, (list, tuple)) or len(v) != 2
+                        or not all(isinstance(c, (int, float)) for c in v)):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            _save_roi(sid, verts, entry.get("n_cells_selected") or 0)
+            n += 1
         return n, ""
     except Exception as e:
         return 0, str(e)

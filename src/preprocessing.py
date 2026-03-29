@@ -184,6 +184,12 @@ def _apply_cell_area_norm(adata: ad.AnnData, enabled: bool) -> None:
 
     areas = adata.obs["cell_area"].values.astype(float)
     invalid = (areas <= 0) | np.isnan(areas)
+    if invalid.all():
+        logger.warning(
+            "All cell_area values are invalid (<= 0 or NaN); "
+            "skipping cell-area normalisation."
+        )
+        return
     if invalid.any():
         logger.warning(
             "%d cells have cell_area <= 0 or NaN; these cells are excluded from "
@@ -450,6 +456,19 @@ def run_harmony(
                 "(multiple slides from the same animal).",
                 batch_key, total_batches, n_conditions,
                 ", ".join(f"{c}: {n}" for c, n in batches_per_cond.items()),
+            )
+
+    # Verify harmonypy is available before modifying any data — fail fast rather
+    # than discovering the missing dependency after the scanpy wrapper probe.
+    try:
+        import harmonypy as _hm_check  # noqa: F401
+    except ImportError:
+        try:
+            import scanpy.external as _sce_check  # noqa: F401
+        except (ImportError, AttributeError):
+            raise ImportError(
+                "harmonypy is required for batch correction. "
+                "Install with: pip install harmonypy"
             )
 
     logger.info("Running Harmony integration on key '%s' (%d batches) …", batch_key, n_batches)

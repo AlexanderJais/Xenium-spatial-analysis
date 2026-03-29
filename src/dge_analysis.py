@@ -744,6 +744,12 @@ def _aggregate_by_replicate(
     for (cond, rep), idx in groups.groups.items():
         indexer = obs.index.get_indexer(idx)
         indexer = indexer[indexer >= 0]  # drop unmatched (-1) indices
+        if len(indexer) == 0:
+            logger.warning(
+                "Pseudobulk: no cells matched for group (%s, %s); skipping.",
+                cond, rep,
+            )
+            continue
         counts = X[indexer].sum(axis=0)
         sample_id = f"{cond}__{rep}"
         rows.append(pd.Series(counts, index=var_names, name=sample_id))
