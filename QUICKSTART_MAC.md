@@ -1,18 +1,19 @@
-# Xenium DGE Pipeline — macOS Quick Start (Apple Silicon)
+# Xenium DGE Pipeline -- macOS Quick Start (Apple Silicon)
 
 > Tested on MacBook Pro M1/M2/M3/M4, macOS Ventura/Sonoma/Sequoia.
+> For full documentation see [README.md](README.md).
 
 ---
 
-## Prerequisites (5 minutes)
+## Prerequisites
 
 You need **nothing** pre-installed except macOS. The installer handles everything.
 
 ---
 
-## 1. Install (one-time)
+## 1. Install (~8 minutes, one-time)
 
-Open **Terminal**, navigate to the project folder, then run:
+Open **Terminal**, navigate to the project folder, and run:
 
 ```bash
 cd /path/to/xenium_dge
@@ -22,57 +23,51 @@ chmod +x install_mac.sh
 
 This installs:
 
-| Package | Version | How |
-|---------|---------|-----|
-| Miniforge3 (ARM64 conda) | latest | curl direct |
-| Python 3.11 | ARM64 native | conda-forge |
-| numpy, pandas, scipy, matplotlib, seaborn | latest | conda-forge |
-| statsmodels | latest | conda-forge |
-| scanpy + anndata | latest | conda-forge |
-| leidenalg + igraph + umap-learn | latest | conda-forge (native ARM64) |
-| streamlit + plotly | latest | pip |
-| harmonypy | latest | pip |
-| PyDESeq2 | latest | pip |
-| squidpy | latest | pip (optional) |
-| Tkinter | bundled | conda-forge `tk` |
+| Component | Details |
+|-----------|---------|
+| Miniforge3 (ARM64 conda) | Downloaded automatically if not present |
+| Python 3.11 | Native Apple Silicon via conda-forge |
+| Scientific stack | numpy, pandas, scipy, matplotlib, seaborn, statsmodels |
+| Single-cell | scanpy, anndata, leidenalg, igraph, umap-learn |
+| Batch correction | harmonypy |
+| DGE | PyDESeq2 (optional, Wilcoxon fallback available) |
+| Web interface | streamlit, plotly |
+| Spatial (optional) | squidpy |
+| GUI support | Tkinter (bundled via conda-forge `tk`) |
 
-Total disk: ~1.8 GB. Install time: ~8 minutes on a fast connection.
+Total disk: ~1.8 GB.
 
 ---
 
-## 2. Place your panel metadata
+## 2. Launch
 
-Your `Xenium_mBrain_v1_1_metadata.csv` is already included at:
+**Option A -- Web app (recommended):**
 
-```
-xenium_dge/data/Xenium_mBrain_v1_1_metadata.csv
-```
+Double-click `start_app.command` in Finder. Your browser opens at http://localhost:8501.
 
----
-
-## 3. Launch the web interface (recommended)
-
-**Option A — double-click (easiest):**
-Find `start_app.command` in Finder and double-click it.
-Your browser opens automatically at http://localhost:8501.
-
-**Option B — terminal:**
+Or from Terminal:
 ```bash
 conda activate xenium_dge
-cd app && streamlit run app.py
+streamlit run app/app.py
 ```
 
-**Option C — desktop GUI (alternative):**
+**Option B -- Desktop GUI:**
 ```bash
 conda activate xenium_dge
 python launcher.py
 ```
-A Tkinter window opens with fields for slide folders, output directory,
-DGE method, panel mode, and a live log panel.
+
+**Option C -- Command line (headless):**
+```bash
+conda activate xenium_dge
+python run_xenium_mbh.py               # interactive ROI drawing
+python run_xenium_mbh.py --no-roi-gui  # use saved/preset ROIs
+python run_xenium_mbh.py --redraw-roi  # force ROI redraw for all slides
+```
 
 ---
 
-## 4. Enter your Xenium folder paths
+## 3. Enter your Xenium folder paths
 
 Each Xenium run directory must contain:
 
@@ -86,119 +81,111 @@ Each Xenium run directory must contain:
     experiment.xenium
 ```
 
-**Web app:** Go to **📁 Study Setup** and paste the full path to each run directory.
-A green tick confirms the directory is valid.
+**Web app:** Go to **📁 Study Setup** and paste the full path to each run directory. A green tick confirms validity. The page shows cell count and gene count per slide once validated.
 
-**Desktop launcher:** Click **Browse …** next to each slide row and navigate to the folder.
+**Desktop launcher:** Click **Browse...** next to each slide row.
 
-Rename Slide IDs in the text boxes if needed (e.g. `AGED_Bregma-1.8`).
-
----
-
-## 5. Configure options
-
-| Option | Recommendation |
-|--------|---------------|
-| **DGE method** | **stringent_wilcoxon** (default) — cell-level Wilcoxon with post-hoc replication filter; best for n=4 per condition. Use **cside** (Cable et al. 2022) for per-cell-type pseudobulk DESeq2 (publication). **pydeseq2** needs ≥8 replicates to have power. |
-| **Panel mode** | **partial_union** (default) — keeps base genes + custom genes present in ≥2 slides. Recommended for this study. |
-| **ROI drawing mode** | **Polygon** (default) — click vertices around the MBH boundary. Alternatives: Lasso (freehand) or Rectangle. Set in ⚙️ Settings. |
+**Tip:** On macOS, right-click a folder in Finder -> Get Info -> copy the path from *Where*.
 
 ---
 
-## 6. Save / load your config
+## 4. Configure settings
 
-Click **Save config** to write a JSON file with all paths and settings.
-Click **Load config** to restore a previous session — no need to re-browse all 8 folders.
+Go to **⚙️ Pipeline Settings** (web app) or the Settings panel (launcher). Key decisions:
 
----
+| Option | Default | Recommendation |
+|--------|---------|----------------|
+| **DGE method** | `stringent_wilcoxon` | Best for n=4 per condition. Use `cside` for per-cell-type pseudobulk (publication). `pydeseq2` needs n >= 8. |
+| **Panel mode** | `partial_union` | Keeps base + custom genes in >= 2 slides. Best balance of coverage vs noise. |
+| **Leiden resolution** | 0.6 | Increase for finer clusters, decrease for coarser. |
+| **Figure format** | `pdf` | Editable in Illustrator/Affinity. `png` or `svg` also available. |
 
-## 7. Draw ROIs, then run
-
-**Web app:** Go to **🗺️ ROI Manager** and draw the MBH boundary on each slide
-*before* clicking Run Pipeline. Use the polygon tool in the chart toolbar,
-double-click to close. The dashed orange ellipse is an anatomical atlas hint.
-Saved ROIs are reused automatically on every subsequent run.
-
-Then go to **🚀 Run Pipeline** and click **▶ Run Pipeline**.
-The log streams live; a Stop button is always available.
-
-**CLI / launcher (first run only):**
-
-1. A Matplotlib drawing window opens for each slide.
-2. Draw a polygon around the mediobasal hypothalamus.
-3. Right-click or press Enter to close the polygon.
-4. The ROI is saved to `roi_cache/<slide_id>_roi.json`.
-5. Subsequent runs reuse the saved ROIs automatically.
+All parameters have sensible defaults -- you can skip this step for a first run.
 
 ---
 
-## 8. Outputs
+## 5. Save / load config
 
-All 17 figures are saved to your chosen output directory as **editable PDFs**
-(Type 42 fonts, readable in Adobe Illustrator / Affinity Publisher):
+Click **Save config** to write all paths and settings to a JSON file. Click **Load config** to restore a previous session -- no need to re-enter all 8 folder paths.
 
-| Figure | Content |
-|--------|---------|
-| fig1_qc.pdf | QC violins + spatial count density |
-| fig2_umap.pdf | UMAP by condition and cluster |
-| fig3_spatial_clusters.pdf | Spatial cluster maps (MBH) |
-| fig4_dotplot.pdf | Marker gene dot plot |
-| fig5_volcano.pdf | AGED vs ADULT global volcano |
-| fig6_heatmap.pdf | Top DEG heatmap (z-scored) |
-| fig7_spatial_expr.pdf | Spatial expression of top DEGs |
-| fig8_summary.pdf | 6-panel composite summary |
-| fig9_cell_types.pdf | Cell type annotation in MBH |
-| fig10_spatial_stats.pdf | Moran's I + neighbourhood enrichment |
-| fig11_cluster_dge.pdf | Per-cluster DEG counts + bubble chart |
-| fig12_slide_qc.pdf | Per-slide QC + MBH yield overview |
-| fig13_panel_qc.pdf | Panel composition + custom gene overlap |
-| fig14_insulin.pdf | Insulin/metabolic signalling gene panel |
-| fig15_galanin.pdf | Galanin spatial maps, violin & log₂FC lollipop |
-| fig16_composition.pdf | Cell type composition testing (scCODA) |
-| fig17_neuropeptide_modules.pdf | Neuropeptide co-expression modules (AgRP/NPY, POMC/CART, KNDy, SST, TRH/DA, Galanin) |
-
-Plus:
-- `global_dge_aged_vs_adult.csv` — full DGE results table
-- `cluster_dge_results.csv` — per-cluster DGE
-- `cluster_dge_summary.csv` — DEG counts per cluster
-- `morans_i_mbh.csv` — spatially variable genes
-- `panel_validation.csv` — per-slide gene panel composition
-- `adata_mbh_final.h5ad` — final annotated AnnData
+See the [README](README.md#configuration-file-format) for the JSON schema.
 
 ---
 
-## Running without the GUI (terminal only)
+## 6. Draw ROIs
 
-```bash
-conda activate xenium_dge
+**Before running the pipeline**, define the mediobasal hypothalamus boundary on each slide.
 
-# Edit the paths directly in run_xenium_mbh.py, then:
-python run_xenium_mbh.py
+**Web app (🗺️ ROI Manager):**
+1. Select a slide from the dropdown
+2. Click the **polygon tool** (pentagon icon) in the Plotly chart toolbar
+3. Click to place vertices around the MBH
+4. **Double-click** to close the polygon
+5. The dashed orange ellipse is an anatomical atlas hint -- adjust to your histology
+6. ROI is saved automatically to `roi_cache/`
 
-# Skip ROI drawing (uses saved or preset atlas ROIs):
-python run_xenium_mbh.py --no-roi-gui
-
-# Force ROI redraw for all slides:
-python run_xenium_mbh.py --redraw-roi
+**If the drawing tool doesn't work in your browser:** use the **manual coordinate entry** panel. Paste x,y pairs in micrometres, one per line:
+```
+3200, 4100
+3800, 4100
+3800, 4700
+3200, 4700
 ```
 
+**Copy ROIs:** If sections are at similar coordinates, draw once and copy to other slides using the **Copy this ROI** expander.
+
+**CLI mode:** A Matplotlib window opens per slide. Draw a polygon, then right-click or press Enter to close.
+
+Saved ROIs are reused automatically on every subsequent run.
+
 ---
 
-## Memory usage (48 GB M4 Pro)
+## 7. Run the pipeline
+
+**Web app:** Go to **🚀 Run Pipeline** and click **Run Pipeline**. Pre-flight checks validate all slides first. The log streams live with colour-coded output. A Stop button is always available.
+
+**Runtime:** ~15--25 minutes for 8 slides on M4 Pro.
+
+---
+
+## 8. View results
+
+**Web app (📊 Results):**
+- All 17 figures displayed inline with dropdown selector and thumbnail gallery
+- Download buttons for each figure
+- Tabs for: Global DGE table, Cluster DGE table, Moran's I, Panel validation, AnnData `.h5ad`
+
+**Gene Explorer (🔬):**
+- Generate on-demand spatial expression maps for any gene
+- Reads from the preprocessed AnnData cache -- no pipeline rerun needed
+
+### Output files
+
+All files are saved to your output directory:
+
+| File | Description |
+|------|-------------|
+| `fig1_qc.pdf` ... `fig17_neuropeptide_modules.pdf` | 17 publication-ready figures (Nature PG standards, editable PDF) |
+| `global_dge_aged_vs_adult.csv` | Full DGE results |
+| `cluster_dge_results.csv` | Per-cluster DGE |
+| `cluster_dge_summary.csv` | DEG counts per cluster |
+| `morans_i_mbh.csv` | Spatially variable genes |
+| `panel_validation.csv` | Per-slide panel composition |
+| `adata_mbh_final.h5ad` | Final annotated AnnData |
+
+---
+
+## Memory usage
 
 | Step | Approx. RAM |
-|------|------------|
-| Loading 8 slides (2 500–3 500 cells each) | ~2 GB |
+|------|-------------|
+| Loading 8 slides (~3 000 cells x ~297 genes each) | ~2 GB |
 | After MBH ROI filter (~15% of tissue) | ~400 MB |
 | PCA + Harmony | ~1 GB peak |
-| UMAP | ~500 MB |
-| PyDESeq2 pseudobulk | ~200 MB |
-| All figures | ~500 MB |
-| **Total peak** | **~3–4 GB** |
+| UMAP + figures | ~1 GB |
+| **Total peak** | **~3--4 GB** |
 
-Your 48 GB is more than sufficient. For datasets with 50 000+ cells per slide,
-set `n_top_genes = 100` in the **⚙️ Settings** page (web app) or edit
-`CFG.n_top_genes` in `run_xenium_mbh.py` to reduce memory.
+48 GB is more than sufficient. For very large slides (50 000+ cells), set `n_top_genes = 100` in Settings.
 
 ---
 
@@ -206,15 +193,11 @@ set `n_top_genes = 100` in the **⚙️ Settings** page (web app) or edit
 
 **"No module named scanpy"**
 ```bash
-conda activate xenium_dge
-cd app && streamlit run app.py   # web interface
-# or:
-python launcher.py               # desktop launcher
+conda activate xenium_dge   # always activate first
 ```
 
-**matplotlib window does not appear**
+**Matplotlib window does not appear**
 ```bash
-# Ensure the MacOSX backend is set
 echo "backend: MacOSX" >> ~/.matplotlib/matplotlibrc
 ```
 
@@ -223,9 +206,18 @@ echo "backend: MacOSX" >> ~/.matplotlib/matplotlibrc
 conda install -n xenium_dge -c conda-forge leidenalg -y
 ```
 
-**PyDESeq2 is slow or finds no significant genes with n=4**
-PyDESeq2 pseudobulk requires ≥8 biological replicates per condition to have
-adequate power. With n=4 per group it typically returns no significant results.
-Use **stringent_wilcoxon** (default, recommended for n=4) or **cside** for
-per-cell-type pseudobulk analysis (publication-grade). Switch in the
-**⚙️ Settings** page or set `CFG.dge_method` in `run_xenium_mbh.py`.
+**PyDESeq2 finds no significant genes**
+Expected with n=4 per condition -- pseudobulk needs >= 8 replicates for power. Use `stringent_wilcoxon` (default) or `cside` instead.
+
+**Pipeline log shows Harmony error**
+```bash
+pip install harmonypy
+```
+
+**Figures not appearing in Results**
+Verify the output directory in Study Setup matches what the pipeline used. Check the log for the exact output path.
+
+**App is slow to load slide scatter**
+The ROI Manager loads `cells.parquet` on demand. For very large slides (>50 000 cells) this may take a few seconds. The scatter is automatically subsampled to 15 000 cells for display speed.
+
+For more troubleshooting, see the **ℹ️ Help** page in the web app or the [README](README.md#troubleshooting).
