@@ -20,7 +20,7 @@ for k, v in {
     "n_neighbors": 12, "min_counts": 10, "max_counts": 2000,
     "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
     "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 30,
-    "roi_mode": "polygon", "figure_format": "pdf", "dpi": 300,
+    "figure_format": "pdf", "dpi": 300,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -320,24 +320,11 @@ with d3:
 
 st.divider()
 
-# ── ROI & Figures ─────────────────────────────────────────────────────────────
-st.subheader("ROI & figure export")
-r1, r2, r3 = st.columns(3)
+# ── Figure export ────────────────────────────────────────────────────────────
+st.subheader("Figure export")
+r1, r2 = st.columns(2)
 
 with r1:
-    roi_mode = st.radio(
-        "ROI drawing mode",
-        ["polygon", "lasso", "rectangle"],
-        index=["polygon","lasso","rectangle"].index(st.session_state["roi_mode"]),
-        format_func=lambda x: {
-            "polygon"   : "Polygon — click to place vertices",
-            "lasso"     : "Lasso — freehand draw",
-            "rectangle" : "Rectangle — click and drag",
-        }[x],
-    )
-    st.session_state["roi_mode"] = roi_mode
-
-with r2:
     fmt = st.selectbox(
         "Figure format",
         ["pdf", "png", "svg"],
@@ -346,7 +333,7 @@ with r2:
     )
     st.session_state["figure_format"] = fmt
 
-with r3:
+with r2:
     dpi = st.selectbox(
         "Figure DPI",
         [150, 300, 600],

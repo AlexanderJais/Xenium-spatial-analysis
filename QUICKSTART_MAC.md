@@ -118,13 +118,12 @@ See the [README](README.md#configuration-file-format) for the JSON schema.
 
 **Web app (🗺️ ROI Manager):**
 1. Select a slide from the dropdown
-2. Click the **polygon tool** (pentagon icon) in the Plotly chart toolbar
-3. Click to place vertices around the MBH
-4. **Double-click** to close the polygon
-5. The dashed orange ellipse is an anatomical atlas hint -- adjust to your histology
-6. ROI is saved automatically to `roi_cache/`
+2. Use the four sliders to frame the MBH bounding rectangle (left/right x, top/bottom y)
+3. The scatter plot and cell count update live as you adjust
+4. The dashed orange ellipse is an anatomical atlas hint -- adjust to your histology
+5. Click **Save ROI** when the rectangle covers the MBH boundary
 
-**If the drawing tool doesn't work in your browser:** use the **manual coordinate entry** panel. Paste x,y pairs in micrometres, one per line:
+**For precise coordinates:** use the **manual coordinate entry** panel. Paste x,y vertex pairs in micrometres, one per line:
 ```
 3200, 4100
 3800, 4100

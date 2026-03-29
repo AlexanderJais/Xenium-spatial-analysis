@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 def run_qc(
     adata: ad.AnnData,
     min_counts: int = 10,
-    max_counts: int = 5_000,
+    max_counts: int = 2_000,
     min_genes: int = 10,
-    max_genes: int = 500,
-    min_cells_per_gene: int = 10,
+    max_genes: int = 300,
+    min_cells_per_gene: int = 5,
     filter_control_probes: bool = True,
     filter_control_codewords: bool = True,
     min_cell_area: float = 20.0,
@@ -345,7 +345,7 @@ def normalise_and_select_hvg(
 
 def run_pca(
     adata: ad.AnnData,
-    n_pcs: int = 50,
+    n_pcs: int = 30,
     use_hvg: bool = True,
     random_state: int = 42,
 ) -> ad.AnnData:
@@ -404,7 +404,7 @@ def run_pca(
 def run_harmony(
     adata: ad.AnnData,
     batch_key: str = "slide_id",
-    max_iter: int = 20,
+    max_iter: int = 30,
     random_state: int = 42,
 ) -> ad.AnnData:
     """
@@ -578,7 +578,7 @@ def run_harmony(
 def build_graph_and_umap(
     adata: ad.AnnData,
     use_harmony: bool = True,
-    n_neighbors: int = 15,
+    n_neighbors: int = 12,
     n_pcs: int = 30,
     umap_min_dist: float = 0.3,
     umap_spread: float = 1.0,
@@ -626,7 +626,7 @@ def build_graph_and_umap(
 
 def run_leiden(
     adata: ad.AnnData,
-    resolution: float = 0.5,
+    resolution: float = 0.6,
     key_added: str = "leiden",
     random_state: int = 42,
 ) -> ad.AnnData:

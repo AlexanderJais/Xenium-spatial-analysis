@@ -77,7 +77,7 @@ Or double-click `start_app.command` in Finder. Your browser opens at http://loca
 |------|---------|
 | **📁 Study Setup** | Enter paths to 8 Xenium output directories. Green tick = valid. Save/load full config as JSON. |
 | **⚙️ Pipeline Settings** | All analysis parameters: panel mode, DGE method, QC thresholds, Leiden resolution, figure format, DPI. |
-| **🗺️ ROI Manager** | Interactive Plotly scatter for each slide. Draw a polygon around the MBH; dashed orange ellipse provides an atlas hint. Manual coordinate entry as fallback. ROIs saved to `roi_cache/` and reused automatically. |
+| **🗺️ ROI Manager** | Interactive Plotly scatter for each slide. Use sliders to frame the MBH bounding rectangle; dashed orange ellipse provides an atlas hint. Manual coordinate entry as fallback. ROIs saved to `roi_cache/` and reused automatically. |
 | **🚀 Run Pipeline** | Pre-flight validation, then one-click launch. Live colour-coded log with progress stages. Stop button always available. |
 | **📊 Results** | All 17 figures inline with dropdown + thumbnail gallery. Download buttons for each figure. Tabs for DGE tables, Moran's I, panel validation, and the final AnnData `.h5ad`. |
 | **🔬 Gene Explorer** | On-demand spatial expression map for any gene across all MBH slides. No pipeline rerun needed — reads from the preprocessed AnnData cache. |
@@ -300,8 +300,8 @@ Always activate the environment first:
 conda activate xenium_dge
 ```
 
-**Plotly polygon tool not working in browser**
-Use the manual coordinate entry panel in the ROI Manager instead. Paste x,y pairs (one per line, in micrometres) and click Save.
+**ROI sliders not responding**
+Refresh the page (Ctrl+R / Cmd+R). If the issue persists, use the manual coordinate entry panel to type x,y pairs directly.
 
 **`cell_feature_matrix/` not found**
 The selected path must be the Xenium run output directory itself, not a parent folder. It must directly contain `cell_feature_matrix/` and `cells.parquet`.

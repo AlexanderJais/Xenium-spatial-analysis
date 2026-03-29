@@ -48,8 +48,8 @@ Key decisions:
 - **min_slides:** How many slides a custom gene must appear in to be retained (default 2)
 
 ### 3 — ROI Manager
-Go to **🗺️ ROI Manager** and draw the mediobasal hypothalamus boundary on each section.
-The dashed orange ellipse is an anatomical hint. Saved polygons are reused automatically.
+Go to **🗺️ ROI Manager** and use the sliders to frame the mediobasal hypothalamus boundary on each section.
+The dashed orange ellipse is an anatomical hint. Saved ROIs are reused automatically.
 
 ### 4 — Run
 Click **▶ Run Pipeline** on the **🚀 Run Pipeline** page.
@@ -99,23 +99,24 @@ with tab_roi:
     st.markdown("""
 ## ROI drawing
 
-### Drawing a polygon
-1. Open **🗺️ ROI Manager** and select a slide
-2. Click the **polygon tool** (pentagon icon) in the Plotly chart toolbar (top-right of the chart)
-3. Click on the scatter plot to place vertices around the MBH
-4. **Double-click** to close the polygon
-5. The polygon is saved automatically
+### Slider-based selection
+1. Open **🗺️ ROI Manager** and select a slide from the dropdown
+2. Use the four sliders to frame the MBH region:
+   - **Left edge / Right edge** — x-axis bounds (µm)
+   - **Top edge / Bottom edge** — y-axis bounds (dorsal → ventral, µm)
+3. The scatter plot and cell count update live as you move the sliders
+4. Click **💾 Save ROI** when the rectangle covers the MBH boundary
+5. All slider values are computed from the actual tissue bounds of each slide
 
 ### Atlas hint
 The dashed orange ellipse marks the approximate location of the mediobasal hypothalamus
 (ventromedial nucleus + arcuate nucleus region). It is based on relative tissue coordinates
-and should be used as a starting guide only — adjust your polygon to the actual histology
+and should be used as a starting guide only — adjust your sliders to the actual histology
 of each section.
 
 ### Manual coordinate entry
-If the Plotly drawing tool does not work in your browser, use the
-**Enter coordinates manually** panel on the right side of the ROI Manager.
-Paste x,y pairs (in µm) one per line:
+If you need precise coordinates, use the **Enter coordinates manually** panel.
+Paste x,y vertex pairs (in µm) one per line:
 ```
 3200, 4100
 3800, 4100
@@ -124,11 +125,11 @@ Paste x,y pairs (in µm) one per line:
 ```
 
 ### Copying ROIs
-If your sections are at similar coordinates you can draw the ROI on one slide
+If your sections are at similar coordinates you can define the ROI on one slide
 and copy it to others using the **Copy this ROI** expander.
 
 ### ROI files
-Polygons are saved as JSON files in `roi_cache/`:
+ROIs are saved as JSON files in `roi_cache/`:
 ```
 roi_cache/
     AGED_1_roi.json
@@ -175,10 +176,9 @@ the biological AGED vs ADULT signal.
 | panel_mode | partial_union | How to harmonise custom genes across slides |
 | min_slides | 2 | Custom genes must appear in ≥ this many slides |
 
-### ROI & Figures
+### Figures
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| roi_mode | polygon | ROI drawing mode: `polygon` (click vertices), `lasso` (freehand), or `rectangle` |
 | figure_format | pdf | Output format: `pdf` (editable, recommended), `png`, or `svg` |
 | dpi | 300 | Figure resolution: 150, 300, or 600 DPI |
 """)
