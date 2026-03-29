@@ -910,8 +910,18 @@ def _apply_launcher_config(config_path: str):
         raise ValueError(f"n_neighbors must be 2–200, got {CFG.n_neighbors}")
     if CFG.min_counts < 0 or CFG.min_genes < 0:
         raise ValueError("min_counts and min_genes must be >= 0")
+    if CFG.min_counts >= CFG.max_counts:
+        raise ValueError(f"min_counts ({CFG.min_counts}) must be < max_counts ({CFG.max_counts})")
+    if CFG.min_genes >= CFG.max_genes:
+        raise ValueError(f"min_genes ({CFG.min_genes}) must be < max_genes ({CFG.max_genes})")
     if CFG.n_top_genes != 0 and CFG.n_top_genes < 10:
         raise ValueError(f"n_top_genes must be 0 (all genes) or >= 10, got {CFG.n_top_genes}")
+    if CFG.harmony_max_iter < 1:
+        raise ValueError(f"harmony_max_iter must be >= 1, got {CFG.harmony_max_iter}")
+    if CFG.figure_format not in ("pdf", "png", "svg"):
+        raise ValueError(f"figure_format must be pdf, png, or svg, got '{CFG.figure_format}'")
+    if CFG.dpi not in (150, 300, 600):
+        raise ValueError(f"dpi must be 150, 300, or 600, got {CFG.dpi}")
     CFG.dge_log2fc_threshold    = float(lcfg.get("log2fc_threshold",       CFG.dge_log2fc_threshold))
     CFG.filter_control_probes   = bool(lcfg.get("filter_control_probes",   CFG.filter_control_probes))
     CFG.filter_control_codewords= bool(lcfg.get("filter_control_codewords",CFG.filter_control_codewords))

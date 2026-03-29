@@ -24,7 +24,7 @@ import sys
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, font, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 # ---------------------------------------------------------------------------
 # Colour palette (matches Nature figure palette for visual coherence)
