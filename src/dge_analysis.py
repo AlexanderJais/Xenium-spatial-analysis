@@ -195,11 +195,10 @@ def pseudobulk_deseq2(
             expected_coeff, available_coeffs,
         )
 
-    results = (
-        stat_res.results_df.reset_index()
-        .rename(columns={"index": "gene"})
-        .sort_values("padj")
-    )
+    results = stat_res.results_df.reset_index().sort_values("padj")
+    # reset_index() names the column after the index name; normalise to "gene"
+    if "gene" not in results.columns:
+        results = results.rename(columns={results.columns[0]: "gene"})
     logger.info(
         "DESeq2 done: %d significant genes (padj < 0.05)",
         (results["padj"] < 0.05).sum(),
@@ -953,9 +952,12 @@ def cside_pseudobulk_dge(
             res = (
                 stat_res.results_df
                 .reset_index()
-                .rename(columns={"index": "gene", "log2FoldChange": "log2fc", "padj": "pval_adj"})
+                .rename(columns={"log2FoldChange": "log2fc", "padj": "pval_adj"})
                 .sort_values("pval_adj")
             )
+            # reset_index() names the column after the index name; normalise to "gene"
+            if "gene" not in res.columns:
+                res = res.rename(columns={res.columns[0]: "gene"})
             res.insert(0, "group", ct)
             res["method"] = "cside_pseudobulk"
             all_results.append(res)

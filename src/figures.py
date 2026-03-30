@@ -807,9 +807,10 @@ def plot_volcano(
     ax.axvline(-log2fc_thresh, color="#0072B2", lw=0.5, ls="--", zorder=0, alpha=0.6)
 
     # Labels for top genes
+    gene_col = "gene" if "gene" in df.columns else df.columns[0]
     label_score = df["-log10_padj"] * df[log2fc_col].abs()
     top_genes = df.loc[label_score.nlargest(n_label).index]
-    _label_points(ax, top_genes, log2fc_col, "-log10_padj", "gene")
+    _label_points(ax, top_genes, log2fc_col, "-log10_padj", gene_col)
 
     ax.set_xlabel(f"log$_2$FC ({condition_b} / {condition_a})")
     ax.set_ylabel("-log$_{10}$(adj. p-value)")
