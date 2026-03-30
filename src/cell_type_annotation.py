@@ -852,21 +852,18 @@ def assign_labels_from_markers(
     This is the recommended approach for targeted spatial panels because it
     derives labels from the actual expression data.
 
-    Workflow (3 stages)
-    -------------------
-    Stage 1 – Broad type classification:
-        Compute mean log-normalised expression per cluster, z-score across
-        clusters, then score each cluster against broad cell type markers
-        with specificity weights.
+    Workflow
+    --------
+    1.  Compute mean log-normalised expression per cluster.
+    2.  Z-score each gene across clusters (removes broadly-expressed bias).
+    3.  For each cluster, compute weighted sum of z-scores for each broad
+        cell type.  Weights are 1/(number of marker lists the gene appears
+        in), so unique markers count more.
+    4.  Assign the broad type with the highest weighted score.
+    5.  Log all scores for researcher verification.
 
-    Stage 2 – Subtype refinement:
-        Within each broad class, re-score against subtype-specific markers
-        and assign the best-matching subtype.
-
-    Stage 3 – Disambiguation:
-        When multiple clusters receive the same subtype label, identify the
-        top differentiating gene (highest z-score difference vs. group mean)
-        and append it as a suffix so every cluster gets a unique name.
+    Note: only broad-level labels from MBH_MARKERS are used.  Subtype
+    resolution is not reliable with targeted Xenium panels (~300 genes).
 
     Parameters
     ----------
@@ -895,8 +892,6 @@ def assign_labels_from_markers(
     and .uns['cluster_annotation_scores'].
     """
     broad_markers    = broad_markers    or MBH_MARKERS
-    subtype_markers  = subtype_markers  or MBH_SUBTYPE_MARKERS
-    _broad_to_sub    = broad_to_subtypes or BROAD_TO_SUBTYPES
 
     X    = _get_lognorm(adata)
     vn   = list(adata.var_names)
@@ -907,11 +902,8 @@ def assign_labels_from_markers(
         key=lambda x: (0, int(x)) if str(x).isdigit() else (1, x),
     )
 
-    # Compute specificity weights across BOTH marker dicts
-    all_markers = {}
-    all_markers.update(broad_markers)
-    all_markers.update(subtype_markers)
-    spec_weights = compute_specificity_weights(all_markers) if use_specificity_weights else {}
+    # Compute specificity weights across broad marker dict
+    spec_weights = compute_specificity_weights(broad_markers) if use_specificity_weights else {}
 
     # ── Step 1: mean expression per cluster ──────────────────────────────
     cluster_means: dict[str, np.ndarray] = {}
@@ -960,70 +952,10 @@ def assign_labels_from_markers(
 
     score_df = pd.DataFrame(score_rows).set_index("cluster")
 
-    # ── Step 4: subtype scoring within each broad class ──────────────────
-    final_labels: dict[str, str]  = {}
-    final_scores: dict[str, float] = {}
-
-    for cl in clusters:
-        broad   = broad_labels[cl]
-        compat  = _broad_to_sub.get(broad, [])
-
-        if compat:
-            srow = {st: _score(cl, subtype_markers.get(st, [])) for st in compat}
-            best_st    = max(compat, key=lambda st: srow[st])
-            best_score = srow[best_st]
-            final_labels[cl] = best_st
-            final_scores[cl] = best_score
-        else:
-            final_labels[cl] = broad
-            final_scores[cl] = broad_scores[cl]
-
-    # ── Step 5: disambiguate duplicate labels ─────────────────────────────
-    # When multiple clusters receive the same subtype label, append the
-    # top distinguishing gene so each cluster gets a unique name.
-    from collections import Counter
-    label_counts = Counter(final_labels.values())
-    dupes = {lab for lab, cnt in label_counts.items() if cnt > 1 and lab != fallback}
-
-    if dupes:
-        # Collect all marker genes (to exclude from suffix selection)
-        used_genes = set()
-        for mk_dict in (broad_markers, subtype_markers):
-            for genes in mk_dict.values():
-                used_genes.update(genes)
-
-        for dup_label in sorted(dupes):
-            dup_cls = [cl for cl in clusters if final_labels[cl] == dup_label]
-
-            # For each cluster, rank all genes by z-score (descending)
-            cl_rankings: dict[str, list[str]] = {}
-            for cl in dup_cls:
-                z = cl_zscore[cl]
-                ranked = [vn[i] for i in np.argsort(-z) if vn[i] not in used_genes]
-                cl_rankings[cl] = ranked
-
-            # Greedy assignment: pick each cluster's top gene that no other
-            # cluster in the group has already claimed
-            claimed: set[str] = set()
-            suffix_map: dict[str, str] = {}
-
-            # Process clusters in order of their top gene rank so the most
-            # distinctive cluster picks first
-            for cl in dup_cls:
-                for g in cl_rankings[cl]:
-                    if g not in claimed:
-                        suffix_map[cl] = g
-                        claimed.add(g)
-                        break
-
-            for cl in dup_cls:
-                if cl in suffix_map:
-                    final_labels[cl] = f"{dup_label} ({suffix_map[cl]}+)"
-                else:
-                    final_labels[cl] = f"{dup_label} (C{cl})"
-
-        logger.info("Stage 3 - disambiguation applied to %d duplicate label(s): %s",
-                     len(dupes), ", ".join(sorted(dupes)))
+    # Use broad-level labels directly (appropriate for targeted Xenium panels
+    # with ~300 genes — subtype resolution is not reliable at this depth).
+    final_labels = dict(broad_labels)
+    final_scores = dict(broad_scores)
 
     # ── Log assignments ─────────────────────────────────────────────────
     logger.info("=" * 70)
