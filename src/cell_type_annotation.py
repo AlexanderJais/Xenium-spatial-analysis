@@ -852,16 +852,21 @@ def assign_labels_from_markers(
     This is the recommended approach for targeted spatial panels because it
     derives labels from the actual expression data.
 
-    Workflow
-    --------
-    1.  Compute mean log-normalised expression per cluster.
-    2.  Z-score each gene across clusters (removes broadly-expressed bias).
-    3.  For each cluster, compute weighted sum of z-scores for each broad
-        cell type. Weights are 1/(number of marker lists the gene appears
-        in), so unique markers count more.
-    4.  Assign the broad type with the highest weighted score.
-    5.  Within each broad class, run a second pass using subtype markers.
-    6.  Log all scores for researcher verification.
+    Workflow (3 stages)
+    -------------------
+    Stage 1 – Broad type classification:
+        Compute mean log-normalised expression per cluster, z-score across
+        clusters, then score each cluster against broad cell type markers
+        with specificity weights.
+
+    Stage 2 – Subtype refinement:
+        Within each broad class, re-score against subtype-specific markers
+        and assign the best-matching subtype.
+
+    Stage 3 – Disambiguation:
+        When multiple clusters receive the same subtype label, identify the
+        top differentiating gene (highest z-score difference vs. group mean)
+        and append it as a suffix so every cluster gets a unique name.
 
     Parameters
     ----------
@@ -973,7 +978,52 @@ def assign_labels_from_markers(
             final_labels[cl] = broad
             final_scores[cl] = broad_scores[cl]
 
-    # ── Step 5: log assignments ──────────────────────────────────────────
+    # ── Step 5: disambiguate duplicate labels ─────────────────────────────
+    # When multiple clusters receive the same subtype label, append the
+    # top distinguishing gene so each cluster gets a unique name.
+    from collections import Counter
+    label_counts = Counter(final_labels.values())
+    dupes = {lab for lab, cnt in label_counts.items() if cnt > 1 and lab != fallback}
+
+    if dupes:
+        # For each duplicate group, find the gene with the highest z-score
+        # *difference* for each cluster vs. the group mean.
+        for dup_label in sorted(dupes):
+            dup_cls = [cl for cl in clusters if final_labels[cl] == dup_label]
+
+            # Collect marker genes already used for this label (to exclude)
+            used_genes = set()
+            for mk_dict in (broad_markers, subtype_markers):
+                for genes in mk_dict.values():
+                    used_genes.update(genes)
+
+            # Mean z-score across the duplicate clusters
+            dup_zscores = np.stack([cl_zscore[cl] for cl in dup_cls], axis=0)
+            group_mean  = dup_zscores.mean(axis=0)
+
+            claimed_genes: set[str] = set()
+            for i, cl in enumerate(dup_cls):
+                diff = cl_zscore[cl] - group_mean
+                # Rank genes by how much this cluster stands out
+                ranked_idx = np.argsort(-diff)
+                suffix_gene = None
+                for gi in ranked_idx:
+                    g = vn[gi]
+                    # Skip marker genes and genes already claimed by another cluster
+                    if g not in used_genes and g not in claimed_genes and diff[gi] > 0:
+                        suffix_gene = g
+                        break
+                if suffix_gene:
+                    claimed_genes.add(suffix_gene)
+                    final_labels[cl] = f"{dup_label} ({suffix_gene}⁺)"
+                else:
+                    # Fallback: append cluster number
+                    final_labels[cl] = f"{dup_label} (C{cl})"
+
+        logger.info("Stage 3 – disambiguation applied to %d duplicate label(s): %s",
+                     len(dupes), ", ".join(sorted(dupes)))
+
+    # ── Log assignments ─────────────────────────────────────────────────
     logger.info("=" * 70)
     logger.info("Cluster annotation (specificity-weighted marker scoring):")
     logger.info("  %-6s  %-40s  %s", "ID", "Label", "Score")
@@ -994,7 +1044,7 @@ def assign_labels_from_markers(
         "Override any cluster by passing a custom label_map."
     )
 
-    # ── Step 6: write to adata ───────────────────────────────────────────
+    # ── Write to adata ──────────────────────────────────────────────────
     obs_labels = adata.obs[cluster_key].astype(str).map(final_labels).fillna(fallback)
     obs_scores = adata.obs[cluster_key].astype(str).map(final_scores).fillna(0.0)
 
