@@ -50,11 +50,12 @@ from src.figures import (
 
 logger = logging.getLogger(__name__)
 
-# Categorical colour palette for cell types (12 distinguishable colours)
+# Categorical colour palette for cell types (20 distinguishable colours)
 CELL_TYPE_PALETTE = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
     "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
-    "#D37295", "#A0CBE8",
+    "#D37295", "#A0CBE8", "#FF6F61", "#6B5B95", "#88B04B",
+    "#F7CAC9", "#92A8D1", "#955251", "#B565A7", "#009B77",
 ]
 
 
@@ -107,10 +108,11 @@ def plot_cell_type_panel(
                 if slides:
                     representative_slides[cond] = slides[0]
 
-    # Layout: 2x2 grid. A=top-left, B=top-right, C=bottom-left, D=bottom-right
+    # Layout: 2x2 grid. A=UMAP (top-left), B=composition (top-right),
+    # C=spatial ADULT (bottom-left), D=spatial AGED (bottom-right).
     # Extra right margin to accommodate the legend placed outside panel A.
-    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.75))
-    gs = gridspec.GridSpec(2, 2, figure=fig, wspace=0.38, hspace=0.48)
+    fig = plt.figure(figsize=(DOUBLE * 1.25, DOUBLE * 0.75))
+    gs = gridspec.GridSpec(2, 2, figure=fig, wspace=0.50, hspace=0.48)
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1])
     ax_c = fig.add_subplot(gs[1, 0])
@@ -178,13 +180,7 @@ def plot_cell_type_panel(
         ax.tick_params(labelsize=6)
         ax.set_title(title, fontsize=7)
 
-    # ── B: Representative ADULT section ─────────────────────────────────────
-    adult_slide = representative_slides.get("ADULT")
-    adult_label = f"ADULT — {adult_slide}" if adult_slide else "ADULT"
-    _draw_spatial_ct(ax_b, "ADULT", adult_slide, adult_label)
-    _panel_label(ax_b, "b")
-
-    # ── C: Proportion stacked bar ────────────────────────────────────────────
+    # ── B: Proportion stacked bar ────────────────────────────────────────────
     props = (
         adata.obs.groupby([condition_key, cell_type_key], observed=True)
         .size().unstack(fill_value=0)
@@ -196,15 +192,21 @@ def plot_cell_type_panel(
         if ct not in props.columns:
             continue
         vals = props.reindex(conditions)[ct].fillna(0).values
-        ax_c.bar(x_pos, vals, bottom=bottom,
+        ax_b.bar(x_pos, vals, bottom=bottom,
                  color=ct_pal.get(ct, "#CCCCCC"),
                  width=0.6, linewidth=0, label=ct)
         bottom += vals
-    ax_c.set_xticks(x_pos)
-    ax_c.set_xticklabels(conditions, rotation=30, ha="right", fontsize=6.5)
-    ax_c.set_ylabel("Proportion (%)")
-    ax_c.set_title("Cell type composition", fontsize=7.5)
-    ax_c.set_ylim(0, 108)
+    ax_b.set_xticks(x_pos)
+    ax_b.set_xticklabels(conditions, rotation=30, ha="right", fontsize=6.5)
+    ax_b.set_ylabel("Proportion (%)")
+    ax_b.set_title("Cell type composition", fontsize=7.5)
+    ax_b.set_ylim(0, 108)
+    _panel_label(ax_b, "b")
+
+    # ── C: Representative ADULT section ─────────────────────────────────────
+    adult_slide = representative_slides.get("ADULT")
+    adult_label = f"ADULT — {adult_slide}" if adult_slide else "ADULT"
+    _draw_spatial_ct(ax_c, "ADULT", adult_slide, adult_label)
     _panel_label(ax_c, "c")
 
     # ── D: Representative AGED section ──────────────────────────────────────
@@ -215,7 +217,7 @@ def plot_cell_type_panel(
 
     fig.suptitle("Cell type annotation", fontsize=9, y=1.01)
     # rect leaves the right margin free for the legend outside panel A
-    fig.tight_layout(pad=0.4, rect=[0, 0, 0.88, 1])
+    fig.tight_layout(pad=0.4, rect=[0, 0, 0.90, 1])
     out = _savefig(fig, output_dir / "fig9_cell_types", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
@@ -258,7 +260,8 @@ def plot_spatial_stats(
     n_panels = 1 + (coexpr_matrix is not None) + (neighborhood_result is not None)
     fig_w = DOUBLE if n_panels == 3 else (DOUBLE * 0.66 * n_panels)
 
-    fig, axes = plt.subplots(1, n_panels, figsize=(fig_w, 2.8))
+    fig_h = max(4.0, n_top_genes * 0.18)
+    fig, axes = plt.subplots(1, n_panels, figsize=(fig_w, fig_h))
     if n_panels == 1:
         axes = [axes]
     axes = list(axes)
@@ -479,7 +482,7 @@ def plot_cluster_dge(
         # Colorbar anchored to panel B
         sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
-        cbar = fig.colorbar(sm, ax=ax_b, shrink=0.5, pad=0.02, aspect=15)
+        cbar = fig.colorbar(sm, ax=ax_b, shrink=0.3, pad=0.02, aspect=20)
         cbar.set_label("log$_2$FC", fontsize=6)
         cbar.ax.tick_params(labelsize=5.5, width=0.4, length=2)
         cbar.outline.set_linewidth(0.4)
@@ -604,11 +607,11 @@ def plot_insulin_panel(
             group_of[g] = grp
 
     # ── Figure layout ─────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 1.5))
+    fig = plt.figure(figsize=(DOUBLE * 1.25, DOUBLE * 1.5))
     gs  = gridspec.GridSpec(
         3, 2, figure=fig,
         height_ratios=[1.6, 1.6, 0.7],
-        wspace=0.45, hspace=0.55,
+        wspace=0.40, hspace=0.55,
     )
     ax_a  = fig.add_subplot(gs[0, :])   # full-width lollipop
     ax_b  = fig.add_subplot(gs[1, 0])   # dot plot
@@ -651,8 +654,9 @@ def plot_insulin_panel(
         mpatches.Patch(color=col, label=grp.replace("\n", " "))
         for grp, col in _GROUP_COLOURS.items()
     ]
-    ax_a.legend(handles=legend_handles, frameon=False, fontsize=6,
-                loc="lower right", ncol=2)
+    ax_a.legend(handles=legend_handles, frameon=False, fontsize=5.5,
+                loc="upper left", bbox_to_anchor=(1.02, 1.0),
+                borderaxespad=0, ncol=1)
 
     # Group bracket lines on the y-axis
     cumulative = 0
@@ -853,7 +857,7 @@ def plot_insulin_panel(
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        fig.tight_layout(pad=0.6)
+        fig.tight_layout(pad=0.6, rect=[0.02, 0, 0.92, 1])
 
     out = _savefig(fig, output_dir / "fig14_insulin", fmt=fmt, dpi=dpi)
     plt.close(fig)
@@ -1012,11 +1016,11 @@ def plot_galanin_panel(
     )
 
     # ── Figure layout ─────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 1.10))
+    fig = plt.figure(figsize=(DOUBLE * 1.2, DOUBLE * 1.10))
     gs  = gridspec.GridSpec(
         2, 2, figure=fig,
         height_ratios=[1.05, 1.0],
-        wspace=0.42, hspace=0.58,
+        wspace=0.48, hspace=0.58,
     )
     ax_a = fig.add_subplot(gs[0, 0])   # spatial: ADULT
     ax_b = fig.add_subplot(gs[0, 1])   # spatial: AGED
@@ -1163,7 +1167,8 @@ def plot_galanin_panel(
         mpatches.Patch(color=cond_colour[cond_a], label=f"Higher in {cond_a}"),
         mpatches.Patch(color="#BBBBBB", alpha=0.45, label="ns"),
     ]
-    ax_d.legend(handles=leg_d, frameon=False, fontsize=6, loc="lower right")
+    ax_d.legend(handles=leg_d, frameon=False, fontsize=5.5,
+                loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
     _panel_label(ax_d, "d")
 
     # ── Global DGE annotation from bulk results ───────────────────────────────
@@ -1191,7 +1196,7 @@ def plot_galanin_panel(
     import warnings as _w
     with _w.catch_warnings():
         _w.simplefilter("ignore")
-        fig.tight_layout(pad=0.5)
+        fig.tight_layout(pad=0.5, rect=[0, 0, 0.88, 1])
 
     out = _savefig(fig, output_dir / "fig15_galanin", fmt=fmt, dpi=dpi)
     plt.close(fig)
@@ -1301,7 +1306,7 @@ def plot_composition_panel(
     ax_a.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=6)
     ax_a.set_ylabel("Cell type proportion", fontsize=7)
     ax_a.set_ylim(0, 1)
-    ax_a.set_title("A", loc="left", fontsize=9, fontweight="bold", pad=3)
+    ax_a.set_title("a", loc="left", fontsize=9, fontweight="bold", pad=3)
 
     # Condition labels above bars
     if n_a > 0:
@@ -1391,7 +1396,7 @@ def plot_composition_panel(
 
         n_sig = int(sig_mask.sum())
         ax_b.set_title(
-            f"B   n={n_sig} significant cell type{'s' if n_sig != 1 else ''}",
+            f"b   n={n_sig} significant cell type{'s' if n_sig != 1 else ''}",
             loc="left", fontsize=9, fontweight="bold", pad=3,
         )
     else:
@@ -1399,7 +1404,7 @@ def plot_composition_panel(
             0.5, 0.5, "No composition results\navailable",
             ha="center", va="center", fontsize=7, transform=ax_b.transAxes,
         )
-        ax_b.set_title("B", loc="left", fontsize=9, fontweight="bold", pad=3)
+        ax_b.set_title("b", loc="left", fontsize=9, fontweight="bold", pad=3)
 
     fig.suptitle(
         "Cell type composition — AGED vs ADULT (MBH)",
@@ -1576,9 +1581,9 @@ def plot_neuropeptide_modules(
                     representative_slides[cond] = slides[0]
 
     # ── Figure layout ─────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.85))
+    fig = plt.figure(figsize=(DOUBLE * 1.3, DOUBLE * 0.95))
     gs_outer = gridspec.GridSpec(
-        2, 2, figure=fig, wspace=0.42, hspace=0.52,
+        2, 2, figure=fig, wspace=0.50, hspace=0.52,
     )
     ax_a = fig.add_subplot(gs_outer[0, 0])   # UMAP
     ax_b = fig.add_subplot(gs_outer[0, 1])   # Heatmap
@@ -1614,14 +1619,14 @@ def plot_neuropeptide_modules(
         legend_handles.append(mpatches.Patch(color="#CCCCCC", label="unassigned"))
         ax_a.legend(
             handles=legend_handles, loc="upper left",
-            bbox_to_anchor=(1.02, 1.0), borderaxespad=0,
-            frameon=False, fontsize=5.5, handlelength=1.0,
+            bbox_to_anchor=(1.04, 1.0), borderaxespad=0,
+            frameon=False, fontsize=5, handlelength=0.8,
         )
     else:
         ax_a.text(0.5, 0.5, "UMAP not available", ha="center", va="center",
                   fontsize=7, transform=ax_a.transAxes)
 
-    _panel_label(ax_a, "A")
+    _panel_label(ax_a, "a")
     ax_a.set_title("Dominant neuropeptide module", fontsize=7.5)
     _clean_ax(ax_a)
 
@@ -1664,7 +1669,7 @@ def plot_neuropeptide_modules(
     cbar.set_label("z-score", fontsize=5.5)
     cbar.ax.tick_params(labelsize=5)
 
-    _panel_label(ax_b, "B")
+    _panel_label(ax_b, "b")
     ax_b.set_title("Module score per cell type", fontsize=7.5)
 
     # ── Panel C: AGED vs ADULT mean score per module ───────────────────────────
@@ -1723,13 +1728,16 @@ def plot_neuropeptide_modules(
     ax_c.set_xticklabels(short_mod, rotation=30, ha="right", fontsize=5.5)
     ax_c.set_ylabel("Mean module score (±SEM)", fontsize=6.5)
     ax_c.legend(frameon=False, fontsize=6, loc="upper right")
-    _panel_label(ax_c, "C")
+    _panel_label(ax_c, "c")
     ax_c.set_title("Condition comparison per module", fontsize=7.5)
     ax_c.tick_params(labelsize=5.5)
 
     # ── Panel D: Spatial dominant-module maps ──────────────────────────────────
-    has_spatial = ("x_centroid" in adata.obs.columns and
-                   "y_centroid" in adata.obs.columns)
+    # Support both obs columns (x_centroid/y_centroid) and obsm["spatial"]
+    has_spatial_obs = ("x_centroid" in adata.obs.columns and
+                       "y_centroid" in adata.obs.columns)
+    has_spatial_obsm = "spatial" in adata.obsm
+    has_spatial = has_spatial_obs or has_spatial_obsm
 
     all_dom_labels = [module_names[i] if i >= 0 else "unassigned" for i in dom_idx]
     all_dom_colours = [
@@ -1752,8 +1760,13 @@ def plot_neuropeptide_modules(
             ax_d.set_title(cond, fontsize=6)
             continue
 
-        x = adata.obs.loc[slide_mask, "x_centroid"].values
-        y = adata.obs.loc[slide_mask, "y_centroid"].values
+        if has_spatial_obs:
+            x = adata.obs.loc[slide_mask, "x_centroid"].values
+            y = adata.obs.loc[slide_mask, "y_centroid"].values
+        else:
+            xy = adata.obsm["spatial"][slide_mask]
+            x = xy[:, 0]
+            y = xy[:, 1]
         colours_slide = np.array(all_dom_colours)[slide_mask]
 
         ax_d.scatter(x, -y, c=colours_slide, s=1.2, alpha=0.7,
@@ -1764,7 +1777,7 @@ def plot_neuropeptide_modules(
         ax_d.spines[["left", "bottom", "top", "right"]].set_visible(False)
         ax_d.set_title(cond, fontsize=6, pad=2)
 
-    _panel_label(ax_d0, "D")
+    _panel_label(ax_d0, "d")
 
     # Gene-count annotation per module
     gene_note = "  |  ".join(
@@ -1782,7 +1795,7 @@ def plot_neuropeptide_modules(
 
     with _w.catch_warnings():
         _w.simplefilter("ignore")
-        fig.tight_layout(pad=0.5, rect=[0, 0.04, 1, 0.96])
+        fig.tight_layout(pad=0.5, rect=[0, 0.04, 0.88, 0.96])
 
     out = _savefig(fig, output_dir / "fig17_neuropeptide_modules", fmt=fmt, dpi=dpi)
     plt.close(fig)

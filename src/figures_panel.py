@@ -113,10 +113,10 @@ def plot_panel_overview(
     overlap_df = registry.custom_gene_counts(adatas_raw, slide_ids)
     matrix     = registry.custom_overlap_matrix(adatas_raw, slide_ids)
 
-    fig = plt.figure(figsize=(DOUBLE, DOUBLE * 0.9))
+    fig = plt.figure(figsize=(DOUBLE * 1.3, DOUBLE * 0.9))
     gs  = gridspec.GridSpec(
         2, 2, figure=fig,
-        wspace=0.42, hspace=0.55,
+        wspace=0.50, hspace=0.55,
     )
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1])
@@ -139,6 +139,7 @@ def plot_panel_overview(
     _panel_label(ax_d, "d")
 
     fig.suptitle("Gene panel composition and overlap across slides", fontsize=9, y=1.01)
+    fig.tight_layout(pad=0.5, rect=[0, 0, 0.92, 1])
     out = _savefig(fig, output_dir / "fig13_panel_qc", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
@@ -188,7 +189,8 @@ def _plot_composition_bars(ax, adatas, slide_ids, conditions, registry, overlap_
 
     ax.set_ylabel("Number of genes")
     ax.set_title("Panel composition per slide")
-    ax.legend(frameon=False, fontsize=6, loc="upper right")
+    ax.legend(frameon=False, fontsize=5.5, loc="upper left",
+              bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
 
     # Total annotation on top of bars
     for xi, total in enumerate(bar_base + bar_shared + bar_unique):

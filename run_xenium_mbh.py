@@ -755,14 +755,16 @@ def _plot_slide_qc(adata, output_dir, fmt, dpi):
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
     import numpy as np
-    from src.figures import apply_nature_style, DOUBLE, WONG, _savefig
+    from src.figures import apply_nature_style, DOUBLE, WONG, CONDITION_COLOURS, _savefig
 
     apply_nature_style()
 
     slides = sorted(adata.obs["slide_id"].astype("category").cat.categories.tolist())
     cond_of_slide = adata.obs.groupby("slide_id", observed=True)["condition"].first()
     conds_sorted = sorted(adata.obs["condition"].unique())
-    cond_pal = {c: WONG[i % len(WONG)] for i, c in enumerate(conds_sorted)}
+    # Use established condition colours (blue=ADULT, orange=AGED)
+    cond_pal = {c: CONDITION_COLOURS.get(c, WONG[(i + 5) % len(WONG)])
+                for i, c in enumerate(conds_sorted)}
 
     fig = plt.figure(figsize=(DOUBLE, 2.8))
     gs  = gridspec.GridSpec(1, 3, figure=fig, wspace=0.45)
