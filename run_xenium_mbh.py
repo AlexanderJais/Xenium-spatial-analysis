@@ -855,8 +855,12 @@ def _print_figure_index(out: Path):
         ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
     ]
     for name, desc in table:
-        f = out / f"{name}.pdf"
-        status = "OK" if f.exists() else "missing"
+        # fig3 is saved as _all and _repr variants, not as a single file
+        if name == "fig3_spatial_clusters":
+            found = (out / f"{name}_all.pdf").exists() or (out / f"{name}_repr.pdf").exists()
+        else:
+            found = (out / f"{name}.pdf").exists()
+        status = "OK" if found else "missing"
         print(f"  {name:<32}  {desc}  [{status}]")
     print()
 

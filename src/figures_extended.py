@@ -812,8 +812,8 @@ def plot_insulin_panel(
         sum_ct   = sum_ct.reindex(ct_order)
 
         x_pos2 = np.arange(len(ct_order))
-        up_vals   = sum_ct.get("up",   pd.Series(0, index=ct_order)).values
-        down_vals = sum_ct.get("down", pd.Series(0, index=ct_order)).values
+        up_vals   = sum_ct["up"].values if "up" in sum_ct.columns else np.zeros(len(ct_order))
+        down_vals = sum_ct["down"].values if "down" in sum_ct.columns else np.zeros(len(ct_order))
 
         ax_d.bar(x_pos2, up_vals,   color="#D55E00", width=0.55,
                  label="Up in AGED",   linewidth=0)
