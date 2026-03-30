@@ -143,6 +143,39 @@ def get_cluster_colours(adata: "ad.AnnData", cluster_key: str = "leiden") -> dic
     return dict(zip(clusters, pal))
 
 
+# Canonical cell type palette — 20 distinguishable colours.
+# Used by every figure that colours by cell type (Fig 9, 14, 15, 16, 17, …).
+# Import this palette (or call get_cell_type_colours) everywhere to guarantee
+# the same cell type ↔ colour mapping across all figures.
+CELL_TYPE_PALETTE = [
+    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+    "#D37295", "#A0CBE8", "#FF6F61", "#6B5B95", "#88B04B",
+    "#F7CAC9", "#92A8D1", "#955251", "#B565A7", "#009B77",
+]
+
+
+def get_cell_type_colours(
+    adata: "ad.AnnData",
+    cell_type_key: str = "cell_type",
+) -> dict:
+    """
+    Return a canonical {cell_type: hex_colour} dict, sorted alphabetically.
+
+    Uses CELL_TYPE_PALETTE so every figure that shows cell types gets the
+    same colour mapping.  Falls back to tab20 if >20 cell types.
+    """
+    cell_types = sorted(adata.obs[cell_type_key].dropna().unique(),
+                        key=_safe_cluster_sort_key)
+    n = len(cell_types)
+    if n <= len(CELL_TYPE_PALETTE):
+        pal = CELL_TYPE_PALETTE[:n]
+    else:
+        cmap = mpl.colormaps.get_cmap("tab20")
+        pal = [mcolors.to_hex(cmap(i / n)) for i in range(n)]
+    return dict(zip(cell_types, pal))
+
+
 
 def _get_lognorm(adata: ad.AnnData) -> np.ndarray:
     if "lognorm" in adata.layers:

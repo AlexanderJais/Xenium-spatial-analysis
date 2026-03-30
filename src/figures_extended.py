@@ -44,19 +44,13 @@ from src.figures import (
     _cluster_palette,
     _safe_cluster_sort_key,
     _get_lognorm,
+    get_cell_type_colours,
     DOUBLE, SINGLE, WONG,
     CONDITION_COLOURS,
+    CELL_TYPE_PALETTE,
 )
 
 logger = logging.getLogger(__name__)
-
-# Categorical colour palette for cell types (20 distinguishable colours)
-CELL_TYPE_PALETTE = [
-    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
-    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
-    "#D37295", "#A0CBE8", "#FF6F61", "#6B5B95", "#88B04B",
-    "#F7CAC9", "#92A8D1", "#955251", "#B565A7", "#009B77",
-]
 
 
 # ===========================================================================
@@ -90,9 +84,8 @@ def plot_cell_type_panel(
     if cell_type_key not in adata.obs:
         raise KeyError(f"'{cell_type_key}' not in adata.obs. Run annotation first.")
 
-    cell_types = sorted(adata.obs[cell_type_key].dropna().unique())
-    n_ct = len(cell_types)
-    ct_pal = dict(zip(cell_types, CELL_TYPE_PALETTE[:n_ct]))
+    ct_pal = get_cell_type_colours(adata, cell_type_key)
+    cell_types = sorted(ct_pal.keys(), key=_safe_cluster_sort_key)
 
     slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
     conditions = adata.obs[condition_key].cat.categories.tolist()
@@ -1268,10 +1261,10 @@ def plot_composition_panel(
     ax_b = fig.add_subplot(gs[1])
 
     # ── Panel A: stacked proportion bars ─────────────────────────────────────
-    # Use a tab20-derived palette for cell types (up to 20 types)
+    # Use the canonical cell type palette for consistent colours across figures
     n_ct = len(cell_types)
-    import matplotlib.cm as _cm
-    ct_colors = [_cm.tab20(i / max(n_ct, 1)) for i in range(n_ct)]
+    ct_pal = get_cell_type_colours(adata, cell_type_key)
+    ct_colors = [ct_pal.get(ct, "#CCCCCC") for ct in cell_types]
 
     # Sort replicates: condition_a first, then condition_b
     rep_order = (
