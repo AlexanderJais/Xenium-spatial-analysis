@@ -734,6 +734,21 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         logger.warning("Fig 17 (neuropeptide modules) failed: %s", e)
 
     # ------------------------------------------------------------------
+    # Fig 18: Galanin (Gal) co-expression partners
+    # ------------------------------------------------------------------
+    try:
+        fe.plot_gal_coexpression(
+            adata         = adata,
+            condition_key = "condition",
+            cell_type_key = "cell_type",
+            output_dir    = OUTPUT_DIR,
+            fmt           = CFG.figure_format,
+            dpi           = CFG.dpi,
+        )
+    except Exception as e:
+        logger.warning("Fig 18 (Gal co-expression) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
@@ -853,6 +868,8 @@ def _print_figure_index(out: Path):
         ("fig14_insulin",            "Insulin & metabolic signalling panel"),
         ("fig15_galanin",           "Galanin (Gal) expression across cell types"),
         ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
+        ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
+        ("fig18_gal_coexpression",     "Galanin (Gal) co-expression partners"),
     ]
     for name, desc in table:
         # fig3 is saved as _all and _repr variants, not as a single file

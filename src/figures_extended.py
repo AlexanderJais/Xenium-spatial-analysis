@@ -1793,3 +1793,217 @@ def plot_neuropeptide_modules(
     out = _savefig(fig, output_dir / "fig17_neuropeptide_modules", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
+
+
+# ===========================================================================
+# Figure 18: Galanin (Gal) co-expression partners
+# ===========================================================================
+
+def plot_gal_coexpression(
+    adata: ad.AnnData,
+    condition_key: str = "condition",
+    cell_type_key: str = "cell_type",
+    gene: str = "Gal",
+    n_top: int = 20,
+    n_scatter: int = 6,
+    output_dir: Path = Path("figures_output"),
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> Path:
+    """
+    Fig 18 — Gal single-cell co-expression partners.
+
+    A: Top *n_top* correlated genes (Pearson r, all cells) — horizontal bar.
+    B: Scatter plots of top *n_scatter* partners vs Gal expression.
+    C: Heatmap of Gal–gene Pearson r per cell type.
+    D: Condition-split correlation comparison (ADULT vs AGED lollipop).
+    """
+    import warnings as _w
+    from scipy.stats import pearsonr
+
+    apply_nature_style()
+
+    if gene not in adata.var_names:
+        raise KeyError(f"'{gene}' not found in adata.var_names")
+
+    X = _get_lognorm(adata)
+    vn = list(adata.var_names)
+    gene_idx = vn.index(gene)
+
+    # Extract Gal expression vector
+    if sp.issparse(X):
+        gal_vec = np.asarray(X[:, gene_idx].todense()).ravel()
+    else:
+        gal_vec = np.asarray(X[:, gene_idx]).ravel()
+
+    # ── Compute global Pearson r for every other gene ───────────────────
+    n_genes = len(vn)
+    corrs = np.zeros(n_genes)
+    for i in range(n_genes):
+        if i == gene_idx:
+            continue
+        if sp.issparse(X):
+            other = np.asarray(X[:, i].todense()).ravel()
+        else:
+            other = np.asarray(X[:, i]).ravel()
+        # Skip genes with zero variance
+        if other.std() == 0 or gal_vec.std() == 0:
+            continue
+        corrs[i] = np.corrcoef(gal_vec, other)[0, 1]
+
+    # Rank by absolute correlation, take top n_top (exclude self)
+    ranked_idx = np.argsort(-np.abs(corrs))
+    top_idx = [i for i in ranked_idx if i != gene_idx][:n_top]
+    top_genes = [vn[i] for i in top_idx]
+    top_corrs = [corrs[i] for i in top_idx]
+
+    # ── Figure layout ───────────────────────────────────────────────────
+    fig = plt.figure(figsize=(DOUBLE, 8.0))
+    gs = gridspec.GridSpec(
+        2, 2, figure=fig, hspace=0.45, wspace=0.40,
+        height_ratios=[1, 1.2],
+    )
+
+    # ── Panel A: Top correlated genes bar chart ─────────────────────────
+    ax_a = fig.add_subplot(gs[0, 0])
+    y_pos = np.arange(len(top_genes))
+    colours_a = ["#D55E00" if r > 0 else "#0072B2" for r in top_corrs]
+    ax_a.barh(y_pos, top_corrs, color=colours_a, height=0.7, linewidth=0)
+    ax_a.set_yticks(y_pos)
+    ax_a.set_yticklabels(top_genes, fontsize=5.5, style="italic")
+    ax_a.invert_yaxis()
+    ax_a.set_xlabel("Pearson r", fontsize=7)
+    ax_a.set_title(f"Top {n_top} genes correlated with {gene}", fontsize=7)
+    ax_a.axvline(0, color="0.3", lw=0.4)
+    _panel_label(ax_a, "a")
+
+    # ── Panel B: Scatter plots of top partners ──────────────────────────
+    gs_b = gs[0, 1].subgridspec(2, 3, hspace=0.5, wspace=0.4)
+    scatter_genes = top_genes[:n_scatter]
+    for si, sg in enumerate(scatter_genes):
+        ax = fig.add_subplot(gs_b[si // 3, si % 3])
+        sg_idx = vn.index(sg)
+        if sp.issparse(X):
+            sg_vec = np.asarray(X[:, sg_idx].todense()).ravel()
+        else:
+            sg_vec = np.asarray(X[:, sg_idx]).ravel()
+
+        # Subsample for readability
+        n_cells = len(gal_vec)
+        if n_cells > 5000:
+            rng = np.random.default_rng(42)
+            sub = rng.choice(n_cells, 5000, replace=False)
+        else:
+            sub = np.arange(n_cells)
+
+        ax.scatter(
+            gal_vec[sub], sg_vec[sub],
+            s=0.3, alpha=0.15, c="#333333", linewidths=0, rasterized=True,
+        )
+        r_val = corrs[sg_idx]
+        ax.set_title(f"{sg}  r={r_val:.2f}", fontsize=5.5, style="italic")
+        ax.set_xlabel(gene, fontsize=5)
+        ax.set_ylabel(sg, fontsize=5)
+        ax.tick_params(labelsize=4.5)
+        if si == 0:
+            _panel_label(ax, "b")
+
+    # ── Panel C: Per-cell-type correlation heatmap ──────────────────────
+    ax_c = fig.add_subplot(gs[1, 0])
+    ct_key = cell_type_key if cell_type_key in adata.obs.columns else "leiden"
+    cell_types = sorted(
+        adata.obs[ct_key].unique(),
+        key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x)),
+    )
+
+    # Compute Pearson r per cell type for top genes
+    ct_corr = np.zeros((len(cell_types), len(top_genes)))
+    for ci, ct in enumerate(cell_types):
+        mask = (adata.obs[ct_key] == ct).values
+        if mask.sum() < 10:
+            ct_corr[ci, :] = np.nan
+            continue
+        gal_ct = gal_vec[mask]
+        if gal_ct.std() == 0:
+            ct_corr[ci, :] = np.nan
+            continue
+        for gi, tg in enumerate(top_genes):
+            tg_idx = vn.index(tg)
+            if sp.issparse(X):
+                other_ct = np.asarray(X[mask][:, tg_idx].todense()).ravel()
+            else:
+                other_ct = np.asarray(X[mask][:, tg_idx]).ravel()
+            if other_ct.std() == 0:
+                ct_corr[ci, gi] = np.nan
+            else:
+                ct_corr[ci, gi] = np.corrcoef(gal_ct, other_ct)[0, 1]
+
+    vmax = np.nanmax(np.abs(ct_corr)) if not np.all(np.isnan(ct_corr)) else 0.5
+    im = ax_c.imshow(
+        ct_corr, aspect="auto", cmap="RdBu_r", vmin=-vmax, vmax=vmax,
+        interpolation="nearest",
+    )
+    ax_c.set_xticks(np.arange(len(top_genes)))
+    ax_c.set_xticklabels(top_genes, fontsize=4.5, rotation=90, style="italic")
+    # Shorten cell type labels for display
+    ct_short = [ct.replace(" neuron", "").replace("Glutamatergic", "Glut")
+                  .replace("GABAergic", "GABA").replace("Neuroendocrine", "Neuroendo")
+                for ct in cell_types]
+    ax_c.set_yticks(np.arange(len(cell_types)))
+    ax_c.set_yticklabels(ct_short, fontsize=5)
+    ax_c.set_title(f"Pearson r with {gene} per cell type", fontsize=7)
+    cbar = fig.colorbar(im, ax=ax_c, shrink=0.6, pad=0.02)
+    cbar.ax.tick_params(labelsize=5)
+    cbar.set_label("Pearson r", fontsize=5.5)
+    _panel_label(ax_c, "c")
+
+    # ── Panel D: ADULT vs AGED correlation comparison ───────────────────
+    ax_d = fig.add_subplot(gs[1, 1])
+    conditions = sorted(adata.obs[condition_key].unique())
+    cond_a, cond_b = (conditions[0], conditions[1]) if len(conditions) >= 2 else (conditions[0], conditions[0])
+
+    # Top 15 genes for this panel
+    d_genes = top_genes[:15]
+    r_a = np.zeros(len(d_genes))
+    r_b = np.zeros(len(d_genes))
+    for gi, tg in enumerate(d_genes):
+        tg_idx = vn.index(tg)
+        for cond, r_arr in [(cond_a, r_a), (cond_b, r_b)]:
+            mask = (adata.obs[condition_key] == cond).values
+            g_sub = gal_vec[mask]
+            if sp.issparse(X):
+                o_sub = np.asarray(X[mask][:, tg_idx].todense()).ravel()
+            else:
+                o_sub = np.asarray(X[mask][:, tg_idx]).ravel()
+            if g_sub.std() == 0 or o_sub.std() == 0:
+                r_arr[gi] = 0.0
+            else:
+                r_arr[gi] = np.corrcoef(g_sub, o_sub)[0, 1]
+
+    y_pos_d = np.arange(len(d_genes))
+    # Lollipop: dot for each condition connected by line
+    for gi in range(len(d_genes)):
+        ax_d.plot(
+            [r_a[gi], r_b[gi]], [y_pos_d[gi], y_pos_d[gi]],
+            color="#999999", lw=0.6, zorder=1,
+        )
+    ax_d.scatter(r_a, y_pos_d, s=14, c=CONDITION_COLOURS.get(cond_a, "#0072B2"),
+                 label=cond_a, zorder=2, linewidths=0)
+    ax_d.scatter(r_b, y_pos_d, s=14, c=CONDITION_COLOURS.get(cond_b, "#D55E00"),
+                 label=cond_b, zorder=2, linewidths=0)
+    ax_d.set_yticks(y_pos_d)
+    ax_d.set_yticklabels(d_genes, fontsize=5.5, style="italic")
+    ax_d.invert_yaxis()
+    ax_d.set_xlabel("Pearson r", fontsize=7)
+    ax_d.set_title(f"{gene} correlation: {cond_a} vs {cond_b}", fontsize=7)
+    ax_d.axvline(0, color="0.3", lw=0.4)
+    ax_d.legend(fontsize=5.5, loc="lower right", frameon=False)
+    _panel_label(ax_d, "d")
+
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig.tight_layout(pad=0.5)
+
+    out = _savefig(fig, output_dir / "fig18_gal_coexpression", fmt=fmt, dpi=dpi)
+    plt.close(fig)
+    return out
