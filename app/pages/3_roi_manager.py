@@ -172,11 +172,12 @@ def _import_rois(json_str: str) -> tuple[int, str]:
             verts = entry.get("vertices") or entry
             if not isinstance(verts, list) or len(verts) < 3:
                 continue
-            # Validate each vertex is a pair of numbers
+            # Validate each vertex is a pair of finite numbers
+            import math
             valid = True
             for v in verts:
                 if (not isinstance(v, (list, tuple)) or len(v) != 2
-                        or not all(isinstance(c, (int, float)) for c in v)):
+                        or not all(isinstance(c, (int, float)) and math.isfinite(c) for c in v)):
                     valid = False
                     break
             if not valid:
@@ -352,8 +353,12 @@ with ctrl_col:
             _save_roi(selected_id, verts, n_preview)
             # Store count in session state so 4_run.py can embed it in the JSON
             st.session_state[f"n_cells_{selected_id}"] = n_preview
-            st.success(f"Saved! {n_preview:,} cells in MBH ROI")
+            st.session_state["roi_just_saved"] = selected_id
             st.rerun()
+
+        if st.session_state.get("roi_just_saved") == selected_id:
+            st.success(f"Saved! {st.session_state.get(f'n_cells_{selected_id}', 0):,} cells in MBH ROI")
+            del st.session_state["roi_just_saved"]
 
         if saved_verts:
             n_saved_c = _count_in_polygon(cells_df, saved_verts)

@@ -205,6 +205,11 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.dpi <= 0:
+        parser.error(f"--dpi must be positive, got {args.dpi}")
+    if args.spot_size <= 0:
+        parser.error(f"--spot-size must be positive, got {args.spot_size}")
+
     # ── Load AnnData ─────────────────────────────────────────────────────────
     cache = Path(args.cache)
     if not cache.exists():

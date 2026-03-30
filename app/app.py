@@ -330,8 +330,8 @@ with left:
             label=CTA_LABELS[current_step],
             icon="▶",
         )
-    except Exception:
-        # st.page_link not available in older Streamlit versions
+    except (AttributeError, KeyError):
+        # st.page_link not available in older Streamlit versions, or step out of range
         st.info(f"Next step: **{STEP_LABELS[current_step - 1]}** — use the sidebar to navigate.")
 
 

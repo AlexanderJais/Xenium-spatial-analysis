@@ -10,7 +10,7 @@ font                     = "sans serif"
 headless             = false
 enableCORS           = false
 enableXsrfProtection = true
-maxUploadSize        = 200
+maxUploadSize        = 2048
 
 [browser]
 gatherUsageStats = false

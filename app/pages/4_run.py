@@ -185,7 +185,9 @@ def _launch_pipeline(cfg: dict):
         ret = proc.wait()
         log_q.put(f"__DONE__{ret}")
 
-    threading.Thread(target=_stream, daemon=True).start()
+    t = threading.Thread(target=_stream, daemon=True)
+    st.session_state["pipeline_thread"] = t
+    t.start()
 
 
 # ── Page ──────────────────────────────────────────────────────────────────────
@@ -251,6 +253,7 @@ with col_stop:
     )
 
 if run_clicked and not running:
+    st.session_state["pipeline_running"] = True  # set BEFORE launch to prevent double-click race
     cfg = _build_launcher_config()
     _launch_pipeline(cfg)
     st.rerun()

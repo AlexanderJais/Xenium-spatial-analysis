@@ -328,16 +328,20 @@ with r1:
     fmt = st.selectbox(
         "Figure format",
         ["pdf", "png", "svg"],
-        index=["pdf","png","svg"].index(st.session_state["figure_format"]),
+        index=["pdf","png","svg"].index(st.session_state["figure_format"]) if st.session_state.get("figure_format") in ["pdf","png","svg"] else 0,
         help="PDF = editable in Illustrator/Affinity. PNG = quick preview.",
     )
     st.session_state["figure_format"] = fmt
 
 with r2:
+    _valid_dpis = [150, 300, 600]
+    _cur_dpi = st.session_state.get("dpi", 300)
+    if _cur_dpi not in _valid_dpis:
+        _cur_dpi = 300
     dpi = st.selectbox(
         "Figure DPI",
-        [150, 300, 600],
-        index=[150,300,600].index(st.session_state["dpi"]),
+        _valid_dpis,
+        index=_valid_dpis.index(_cur_dpi),
         help="300 is the Nature minimum for print.",
     )
     st.session_state["dpi"] = dpi

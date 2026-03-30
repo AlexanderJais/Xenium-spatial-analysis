@@ -79,6 +79,8 @@ def _resolve_cache() -> Path | None:
 def _plot_gene(adata, gene: str, spot_size: float, vmax_pct: int,
                fmt: str = "png", dpi: int = 150) -> bytes:
     """Render spatial expression figure and return as PNG or PDF bytes."""
+    if gene not in adata.var_names:
+        raise ValueError(f"Gene '{gene}' not found in AnnData ({adata.n_vars} genes)")
     gi   = list(adata.var_names).index(gene)
     X    = _get_lognorm(adata)
     _xi  = X[:, gi]

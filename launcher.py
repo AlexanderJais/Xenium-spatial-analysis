@@ -631,13 +631,19 @@ class XeniumLauncher(tk.Tk):
         if cfg.get("no_roi_gui"):
             cmd.append("--no-roi-gui")
 
-        self._proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except (FileNotFoundError, OSError) as exc:
+            self._log_line(f"Failed to launch pipeline: {exc}", "error")
+            self._status("Launch failed", "error")
+            self._set_running(False)
+            return
         threading.Thread(target=self._stream_output, daemon=True).start()
 
     def _stream_output(self):
@@ -736,8 +742,8 @@ class XeniumLauncher(tk.Tk):
         try:
             cfg = json.loads(Path(path).read_text())
         except (json.JSONDecodeError, OSError) as exc:
-            self._log_line(f"Failed to load config: {exc}", "err")
-            self._status("Config load failed", "err")
+            self._log_line(f"Failed to load config: {exc}", "error")
+            self._status("Config load failed", "error")
             return
         self._apply_config(cfg)
         self._log_line(f"Config loaded: {path}", "ok")
