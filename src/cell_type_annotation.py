@@ -986,41 +986,43 @@ def assign_labels_from_markers(
     dupes = {lab for lab, cnt in label_counts.items() if cnt > 1 and lab != fallback}
 
     if dupes:
-        # For each duplicate group, find the gene with the highest z-score
-        # *difference* for each cluster vs. the group mean.
+        # Collect all marker genes (to exclude from suffix selection)
+        used_genes = set()
+        for mk_dict in (broad_markers, subtype_markers):
+            for genes in mk_dict.values():
+                used_genes.update(genes)
+
         for dup_label in sorted(dupes):
             dup_cls = [cl for cl in clusters if final_labels[cl] == dup_label]
 
-            # Collect marker genes already used for this label (to exclude)
-            used_genes = set()
-            for mk_dict in (broad_markers, subtype_markers):
-                for genes in mk_dict.values():
-                    used_genes.update(genes)
+            # For each cluster, rank all genes by z-score (descending)
+            cl_rankings: dict[str, list[str]] = {}
+            for cl in dup_cls:
+                z = cl_zscore[cl]
+                ranked = [vn[i] for i in np.argsort(-z) if vn[i] not in used_genes]
+                cl_rankings[cl] = ranked
 
-            # Mean z-score across the duplicate clusters
-            dup_zscores = np.stack([cl_zscore[cl] for cl in dup_cls], axis=0)
-            group_mean  = dup_zscores.mean(axis=0)
+            # Greedy assignment: pick each cluster's top gene that no other
+            # cluster in the group has already claimed
+            claimed: set[str] = set()
+            suffix_map: dict[str, str] = {}
 
-            claimed_genes: set[str] = set()
-            for i, cl in enumerate(dup_cls):
-                diff = cl_zscore[cl] - group_mean
-                # Rank genes by how much this cluster stands out
-                ranked_idx = np.argsort(-diff)
-                suffix_gene = None
-                for gi in ranked_idx:
-                    g = vn[gi]
-                    # Skip marker genes and genes already claimed by another cluster
-                    if g not in used_genes and g not in claimed_genes and diff[gi] > 0:
-                        suffix_gene = g
+            # Process clusters in order of their top gene rank so the most
+            # distinctive cluster picks first
+            for cl in dup_cls:
+                for g in cl_rankings[cl]:
+                    if g not in claimed:
+                        suffix_map[cl] = g
+                        claimed.add(g)
                         break
-                if suffix_gene:
-                    claimed_genes.add(suffix_gene)
-                    final_labels[cl] = f"{dup_label} ({suffix_gene}⁺)"
+
+            for cl in dup_cls:
+                if cl in suffix_map:
+                    final_labels[cl] = f"{dup_label} ({suffix_map[cl]}+)"
                 else:
-                    # Fallback: append cluster number
                     final_labels[cl] = f"{dup_label} (C{cl})"
 
-        logger.info("Stage 3 – disambiguation applied to %d duplicate label(s): %s",
+        logger.info("Stage 3 - disambiguation applied to %d duplicate label(s): %s",
                      len(dupes), ", ".join(sorted(dupes)))
 
     # ── Log assignments ─────────────────────────────────────────────────
