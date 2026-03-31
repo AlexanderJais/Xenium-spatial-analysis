@@ -200,13 +200,11 @@ def coexpression_proportions(
     for cond in sorted(set(conditions)):
         mask = conditions == cond
         n_gal = int((gal & mask).sum())
-        # Use mutually exclusive categories to avoid double-counting
-        # triple-positive (Gal+Galr1+Galr3+) cells
-        n_galr1_only = int((gal & galr1 & ~galr3 & mask).sum())
-        n_galr3_only = int((gal & ~galr1 & galr3 & mask).sum())
-        n_both_rec = int((gal & galr1 & galr3 & mask).sum())
+        # n_galr1/n_galr3 may overlap (triple-positive cells);
+        # n_any_receptor uses union to avoid double-counting in stacked bars
         n_galr1_any = int((gal & galr1 & mask).sum())
         n_galr3_any = int((gal & galr3 & mask).sum())
+        n_both_rec = int((gal & galr1 & galr3 & mask).sum())
         n_any_rec = int((gal & (galr1 | galr3) & mask).sum())
         rows.append({
             "condition": cond,

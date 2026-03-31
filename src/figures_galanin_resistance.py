@@ -200,7 +200,7 @@ def plot_gal_expression_and_resistance(
             mask = adata.obs[condition_key] == cond
             data_by_cond[cond] = expr[mask.values]
 
-        positions = [0, 1]
+        positions = list(range(len(conditions)))
         for pi, cond in enumerate(conditions):
             vals = data_by_cond[cond]
             if len(vals) < 5:
@@ -259,7 +259,7 @@ def plot_gal_expression_and_resistance(
         ax.text(0.5, 0.97, sig, transform=ax.transAxes,
                 ha="center", va="top", fontsize=7, fontweight="bold")
 
-    ax.set_xticks([0, 1])
+    ax.set_xticks(range(len(conditions)))
     ax.set_xticklabels(conditions, fontsize=6)
     ax.set_title("Resistance index", fontsize=8, fontweight="bold")
     ax.set_ylabel("GRI", fontsize=6)
@@ -445,7 +445,7 @@ def plot_gal_regional(
     if region_key not in adata.obs.columns:
         region_key = "leiden" if "leiden" in adata.obs.columns else None
     if region_key is None:
-        logger.warning("No region key for fig21; generating placeholder.")
+        logger.warning("No region key for fig22; generating placeholder.")
         fig, ax = plt.subplots(figsize=(SINGLE, 2))
         ax.text(0.5, 0.5, "No region annotations available",
                 ha="center", va="center", transform=ax.transAxes, fontsize=8)
@@ -491,7 +491,6 @@ def plot_gal_regional(
                          & (df["condition"] == cond)]
                 if row.empty:
                     continue
-                me = float(row["mean_expr"].iloc[0])
                 pct = float(row["pct_expressing"].iloc[0])
                 x_pos = gi * len(conditions) + ci
                 ax_a.scatter(
@@ -642,7 +641,9 @@ def plot_gal_niche(
         "niche", ["#2A2A2A", "#0072B2", "#56B4E9", "#FFD166"], N=256,
     )
 
-    for ci, cond in enumerate(conditions):
+    # Spatial panels limited to first 2 conditions (GridSpec has 3 columns)
+    spatial_conds = conditions[:2]
+    for ci, cond in enumerate(spatial_conds):
         ax = fig.add_subplot(gs[1 + ci])
         cond_mask = adata.obs[condition_key] == cond
         sid = rep_slides.get(cond)
@@ -687,7 +688,7 @@ def plot_gal_niche(
         _panel_label(ax, chr(ord("b") + ci))
 
     fig.suptitle(
-        "Receptor availability in Gal+ cell neighborhood (k=15)",
+        f"Receptor availability in Gal+ cell neighborhood (k={k})",
         fontsize=9, y=1.02,
     )
     fig.tight_layout(pad=0.4)
