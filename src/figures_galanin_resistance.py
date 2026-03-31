@@ -1,7 +1,7 @@
 """
 figures_galanin_resistance.py
 -----------------------------
-Nature-grade figures for galanin resistance analysis (Fig 18-24).
+Nature-grade figures for galanin resistance analysis (Fig 19-25).
 Extends the existing figure pipeline.
 """
 
@@ -67,7 +67,7 @@ def plot_gal_spatial_maps(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 18 — Spatial transcript maps of Gal, Galr1, Galr3.
+    Fig 19 — Spatial transcript maps of Gal, Galr1, Galr3.
 
     Layout: 2 rows (ADULT, AGED) x 3 columns (Gal, Galr1, Galr3).
     Each panel shows cell positions colour-coded by expression level.
@@ -150,7 +150,7 @@ def plot_gal_spatial_maps(
         fontsize=9, y=1.02, color="black",
     )
     fig.tight_layout(pad=0.4)
-    out = _savefig(fig, output_dir / "fig18_gal_spatial_maps", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig19_gal_spatial_maps", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -167,7 +167,7 @@ def plot_gal_expression_and_resistance(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 19 — Expression quantification and resistance index.
+    Fig 20 — Expression quantification and resistance index.
 
     A: Violin plots of Gal, Galr1, Galr3 per-cell expression (adult vs aged)
        with Wilcoxon rank-sum p-values.
@@ -278,7 +278,7 @@ def plot_gal_expression_and_resistance(
         fontsize=9, y=1.02,
     )
     fig.tight_layout(pad=0.5)
-    out = _savefig(fig, output_dir / "fig19_gal_expression_resistance", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig20_gal_expression_resistance", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -309,7 +309,7 @@ def plot_gal_coexpression(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 20 — Spatial co-expression of Gal with receptors.
+    Fig 21 — Spatial co-expression of Gal with receptors.
 
     A-B: Spatial maps coloured by co-expression status (adult / aged).
     C:   Stacked bar showing proportions of Gal+ cells co-expressing receptors.
@@ -415,7 +415,7 @@ def plot_gal_coexpression(
         "Galanin-receptor co-expression (adult vs aged)", fontsize=9, y=1.02,
     )
     fig.tight_layout(pad=0.4)
-    out = _savefig(fig, output_dir / "fig20_gal_coexpression", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig21_gal_coexpression", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -433,7 +433,7 @@ def plot_gal_regional(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 21 — Regional breakdown of Gal / Galr1 / Galr3 expression.
+    Fig 22 — Regional breakdown of Gal / Galr1 / Galr3 expression.
 
     A: Grouped dot plot (size = % expressing, colour = mean expression)
        per region x gene, split by condition.
@@ -456,7 +456,7 @@ def plot_gal_regional(
         ax.text(0.5, 0.5, "No region annotations available",
                 ha="center", va="center", transform=ax.transAxes, fontsize=8)
         ax.axis("off")
-        out = _savefig(fig, output_dir / "fig21_gal_regional", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig22_gal_regional", fmt=fmt, dpi=dpi)
         plt.close(fig)
         return out
 
@@ -470,7 +470,7 @@ def plot_gal_regional(
         ax.text(0.5, 0.5, "Insufficient data", ha="center", va="center",
                 transform=ax.transAxes, fontsize=8)
         ax.axis("off")
-        out = _savefig(fig, output_dir / "fig21_gal_regional", fmt=fmt, dpi=dpi)
+        out = _savefig(fig, output_dir / "fig22_gal_regional", fmt=fmt, dpi=dpi)
         plt.close(fig)
         return out
 
@@ -558,7 +558,7 @@ def plot_gal_regional(
 
     fig.suptitle("Galanin system: regional analysis", fontsize=9, y=1.02)
     fig.tight_layout(pad=0.5)
-    out = _savefig(fig, output_dir / "fig21_gal_regional", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig22_gal_regional", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -578,7 +578,7 @@ def plot_gal_niche(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 22 — Niche receptor availability around Gal+ cells.
+    Fig 23 — Niche receptor availability around Gal+ cells.
 
     A: Box plot of niche receptor score by condition.
     B-C: Spatial heatmaps of niche score on tissue (adult / aged).
@@ -697,7 +697,7 @@ def plot_gal_niche(
         fontsize=9, y=1.02,
     )
     fig.tight_layout(pad=0.4)
-    out = _savefig(fig, output_dir / "fig22_gal_niche", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig23_gal_niche", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -714,7 +714,7 @@ def plot_gal_proximity(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 23 — Nearest-neighbour distance from Gal+ to receptor+ cells.
+    Fig 24 — Nearest-neighbour distance from Gal+ to receptor+ cells.
 
     A: KDE of Gal-to-Galr1 distances, adult vs aged.
     B: KDE of Gal-to-Galr3 distances, adult vs aged.
@@ -821,7 +821,7 @@ def plot_gal_proximity(
         fontsize=9, y=1.02,
     )
     fig.tight_layout(pad=0.5)
-    out = _savefig(fig, output_dir / "fig23_gal_proximity", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig24_gal_proximity", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out
 
@@ -841,7 +841,7 @@ def plot_gal_resistance_summary(
     dpi: int = 300,
 ) -> Path:
     """
-    Fig 24 — Composite summary of galanin resistance in ageing.
+    Fig 25 — Composite summary of galanin resistance in ageing.
 
     6-panel figure:
       A: Spatial Gal expression (ADULT)
@@ -1032,6 +1032,6 @@ def plot_gal_resistance_summary(
         fontsize=9, fontweight="bold", y=1.02,
     )
     fig.tight_layout(pad=0.4)
-    out = _savefig(fig, output_dir / "fig24_gal_resistance_summary", fmt=fmt, dpi=dpi)
+    out = _savefig(fig, output_dir / "fig25_gal_resistance_summary", fmt=fmt, dpi=dpi)
     plt.close(fig)
     return out

@@ -749,6 +749,52 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
         logger.warning("Fig 18 (Gal co-expression) failed: %s", e)
 
     # ------------------------------------------------------------------
+    # Fig 19-25: Galanin resistance analysis
+    # ------------------------------------------------------------------
+    logger.info("Step 10: Galanin resistance analysis (Fig 19-25) …")
+    try:
+        from src import galanin_resistance as gal_mod
+        from src import figures_galanin_resistance as fig_gal
+
+        gene_status = gal_mod._check_genes(adata)
+        if gene_status.get("Gal", False):
+            gal_mod.compute_resistance_index(adata, store_in_obs=True)
+            gal_mod.classify_coexpression(adata, store_in_obs=True)
+            gal_mod.niche_receptor_score(adata, k=15, store_in_obs=True)
+
+            _fig_kwargs = dict(
+                condition_key="condition",
+                output_dir=OUTPUT_DIR,
+                fmt=CFG.figure_format,
+                dpi=CFG.dpi,
+            )
+            _rep_kwargs = dict(representative_slides=CFG.representative_slides)
+
+            fig_gal.plot_gal_spatial_maps(
+                adata, spot_size=CFG.spot_size, **_fig_kwargs, **_rep_kwargs)
+            fig_gal.plot_gal_expression_and_resistance(adata, **_fig_kwargs)
+            fig_gal.plot_gal_coexpression(
+                adata, spot_size=CFG.spot_size, **_fig_kwargs, **_rep_kwargs)
+            fig_gal.plot_gal_regional(adata, **_fig_kwargs)
+            fig_gal.plot_gal_niche(
+                adata, k=15, spot_size=CFG.spot_size, **_fig_kwargs, **_rep_kwargs)
+            fig_gal.plot_gal_proximity(adata, **_fig_kwargs)
+            fig_gal.plot_gal_resistance_summary(
+                adata, k=15, spot_size=CFG.spot_size, **_fig_kwargs, **_rep_kwargs)
+
+            # Export analysis tables
+            coexpr_df = gal_mod.coexpression_proportions(adata)
+            coexpr_df.to_csv(OUTPUT_DIR / "gal_coexpression_proportions.csv", index=False)
+            regional_df = gal_mod.regional_expression_summary(adata)
+            if not regional_df.empty:
+                regional_df.to_csv(OUTPUT_DIR / "gal_regional_expression.csv", index=False)
+            logger.info("Galanin resistance analysis complete (Fig 19-25).")
+        else:
+            logger.info("Gal not in gene panel — skipping resistance analysis.")
+    except Exception as e:
+        logger.warning("Galanin resistance analysis (Fig 19-25) failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
     adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
@@ -870,6 +916,13 @@ def _print_figure_index(out: Path):
         ("fig16_composition",       "Cell type composition testing (scCODA / CLR+t-test)"),
         ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
         ("fig18_gal_coexpression",     "Galanin (Gal) co-expression partners"),
+        ("fig19_gal_spatial_maps",     "Galanin system spatial maps (Gal / Galr1 / Galr3)"),
+        ("fig20_gal_expression_resistance", "Galanin expression & resistance index"),
+        ("fig21_gal_coexpression",     "Galanin-receptor co-expression maps"),
+        ("fig22_gal_regional",         "Galanin system regional breakdown"),
+        ("fig23_gal_niche",            "Niche receptor availability (Gal+ neighbours)"),
+        ("fig24_gal_proximity",        "Ligand-receptor spatial proximity"),
+        ("fig25_gal_resistance_summary", "Galanin resistance composite summary"),
     ]
     for name, desc in table:
         # fig3 is saved as _all and _repr variants, not as a single file

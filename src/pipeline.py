@@ -37,6 +37,8 @@ from src.xenium_loader import load_two_conditions
 from src.preprocessing import full_preprocessing_pipeline
 from src.dge_analysis import run_dge
 from src import figures as fig_module
+from src import figures_galanin_resistance as fig_gal_module
+from src import galanin_resistance as gal_analysis
 
 # Library code should never call basicConfig() -- that is the caller's
 # responsibility.  A NullHandler prevents "No handler found" warnings when the
@@ -313,8 +315,69 @@ class XeniumDGEPipeline:
             output_dir=out, fmt=fmt, dpi=dpi,
         )
 
+        # ── Galanin resistance analysis (Fig 18-24) ─────────────────────
+        self._make_galanin_figures(out, fmt, dpi, ck)
+
         logger.info("All figures saved to %s/", out)
         return self
+
+    def _make_galanin_figures(self, out, fmt, dpi, ck):
+        """Generate galanin resistance figures (Fig 18-24) if Gal is in panel."""
+        gene_status = gal_analysis._check_genes(self.adata)
+        if not gene_status.get("Gal", False):
+            logger.info(
+                "Galanin resistance figures skipped — Gal not in gene panel."
+            )
+            return
+
+        logger.info("Generating galanin resistance figures (Fig 18-24) …")
+
+        # Pre-compute analysis columns
+        gal_analysis.compute_resistance_index(self.adata, store_in_obs=True)
+        gal_analysis.classify_coexpression(self.adata, store_in_obs=True)
+        gal_analysis.niche_receptor_score(self.adata, k=15, store_in_obs=True)
+
+        fig_kwargs = dict(
+            condition_key=ck, output_dir=out, fmt=fmt, dpi=dpi,
+            representative_slides=self.cfg.representative_slides,
+        )
+        spot = self.cfg.spot_size
+
+        fig_gal_module.plot_gal_spatial_maps(
+            self.adata, spot_size=spot, **fig_kwargs,
+        )
+        fig_gal_module.plot_gal_expression_and_resistance(
+            self.adata, condition_key=ck, output_dir=out, fmt=fmt, dpi=dpi,
+        )
+        fig_gal_module.plot_gal_coexpression(
+            self.adata, spot_size=spot, **fig_kwargs,
+        )
+        fig_gal_module.plot_gal_regional(
+            self.adata, condition_key=ck, output_dir=out, fmt=fmt, dpi=dpi,
+        )
+        fig_gal_module.plot_gal_niche(
+            self.adata, k=15, spot_size=spot, **fig_kwargs,
+        )
+        fig_gal_module.plot_gal_proximity(
+            self.adata, condition_key=ck, output_dir=out, fmt=fmt, dpi=dpi,
+        )
+        fig_gal_module.plot_gal_resistance_summary(
+            self.adata, k=15, spot_size=spot, **fig_kwargs,
+        )
+
+        # Export galanin analysis tables
+        coexpr_df = gal_analysis.coexpression_proportions(
+            self.adata, condition_key=ck,
+        )
+        coexpr_df.to_csv(out / "gal_coexpression_proportions.csv", index=False)
+
+        regional_df = gal_analysis.regional_expression_summary(
+            self.adata, condition_key=ck,
+        )
+        if not regional_df.empty:
+            regional_df.to_csv(out / "gal_regional_expression.csv", index=False)
+
+        logger.info("Galanin resistance figures and tables saved.")
 
     def save_results(self) -> "XeniumDGEPipeline":
         """Write the final AnnData to disk."""

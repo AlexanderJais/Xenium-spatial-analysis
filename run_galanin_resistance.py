@@ -2,7 +2,7 @@
 """
 run_galanin_resistance.py
 -------------------------
-Entry point for the galanin resistance analysis (Fig 18-24).
+Entry point for the galanin resistance analysis (Fig 19-25).
 
 Reads a preprocessed AnnData (.h5ad) produced by the main pipeline
 and generates all galanin resistance figures.
@@ -30,7 +30,7 @@ logger = logging.getLogger("galanin_resistance")
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Galanin resistance analysis (Fig 18-24)",
+        description="Galanin resistance analysis (Fig 19-25)",
     )
     parser.add_argument(
         "--input", "-i", required=True,

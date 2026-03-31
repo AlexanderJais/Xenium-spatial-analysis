@@ -75,6 +75,14 @@ FIGURE_CATALOG = [
     ("fig15_galanin",        "Galanin spatial maps, violin & log₂FC lollipop"),
     ("fig16_composition",    "Cell type composition (scCODA)"),
     ("fig17_neuropeptide_modules", "Neuropeptide co-expression modules"),
+    ("fig18_gal_coexpression",    "Galanin (Gal) co-expression partners"),
+    ("fig19_gal_spatial_maps",    "Galanin system spatial maps (Gal / Galr1 / Galr3)"),
+    ("fig20_gal_expression_resistance", "Galanin expression & resistance index"),
+    ("fig21_gal_coexpression",    "Galanin-receptor co-expression maps"),
+    ("fig22_gal_regional",        "Galanin system regional breakdown"),
+    ("fig23_gal_niche",           "Niche receptor availability around Gal+ cells"),
+    ("fig24_gal_proximity",       "Ligand-receptor spatial proximity"),
+    ("fig25_gal_resistance_summary", "Galanin resistance composite summary"),
 ]
 
 # ── Page ──────────────────────────────────────────────────────────────────────
@@ -140,8 +148,8 @@ else:
 st.divider()
 st.subheader("Data files")
 
-tab_dge, tab_cluster, tab_morans, tab_panel, tab_adata, tab_log = st.tabs([
-    "Global DGE", "Cluster DGE", "Moran's I", "Panel validation", "AnnData", "Run log"
+tab_dge, tab_cluster, tab_morans, tab_gal, tab_panel, tab_adata, tab_log = st.tabs([
+    "Global DGE", "Cluster DGE", "Moran's I", "Galanin resistance", "Panel validation", "AnnData", "Run log"
 ])
 
 with tab_dge:
@@ -221,6 +229,27 @@ with tab_morans:
         _download_button(csv_path, "⬇️ Download Moran's I (CSV)")
     else:
         st.info("No Moran's I results yet.")
+
+with tab_gal:
+    coexpr_path = out / "gal_coexpression_proportions.csv"
+    regional_path = out / "gal_regional_expression.csv"
+    if coexpr_path.exists():
+        st.markdown("**Galanin-receptor co-expression proportions**")
+        df_coexpr = pd.read_csv(coexpr_path)
+        st.dataframe(df_coexpr, use_container_width=True)
+        _download_button(coexpr_path, "⬇️ Download co-expression table (CSV)")
+    else:
+        st.info("No galanin co-expression data yet. Requires Gal in the gene panel.")
+    if regional_path.exists():
+        st.divider()
+        st.markdown("**Regional galanin system expression**")
+        df_reg = pd.read_csv(regional_path)
+        gene_filter = st.selectbox(
+            "Filter by gene", ["All", "Gal", "Galr1", "Galr3"], key="gal_gene_filter"
+        )
+        df_show = df_reg if gene_filter == "All" else df_reg[df_reg["gene"] == gene_filter]
+        st.dataframe(df_show, use_container_width=True, height=380)
+        _download_button(regional_path, "⬇️ Download regional expression (CSV)")
 
 with tab_panel:
     csv_path = out / "panel_validation.csv"
