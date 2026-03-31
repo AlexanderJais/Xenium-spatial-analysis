@@ -10,18 +10,16 @@ from pathlib import Path
 from typing import Optional
 
 import anndata as ad
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
-import scipy.sparse as sp
 
 from src.figures import (
     apply_nature_style, _savefig, _panel_label,
-    _get_lognorm, DOUBLE, SINGLE, WONG, CONDITION_COLOURS,
+    DOUBLE, SINGLE, WONG, CONDITION_COLOURS,
 )
 from src.galanin_resistance import (
     GAL_GENE, GALR1_GENE, GALR3_GENE, GAL_SYSTEM_GENES,
@@ -54,7 +52,7 @@ def _resolve_slides(adata, condition_key, representative_slides):
 
 
 # ===================================================================
-# Fig 18: Spatial expression maps — Gal, Galr1, Galr3 x condition
+# Fig 19: Spatial expression maps — Gal, Galr1, Galr3 x condition
 # ===================================================================
 
 def plot_gal_spatial_maps(
@@ -156,7 +154,7 @@ def plot_gal_spatial_maps(
 
 
 # ===================================================================
-# Fig 19: Expression quantification + galanin resistance index
+# Fig 20: Expression quantification + galanin resistance index
 # ===================================================================
 
 def plot_gal_expression_and_resistance(
@@ -284,7 +282,7 @@ def plot_gal_expression_and_resistance(
 
 
 # ===================================================================
-# Fig 20: Spatial co-expression maps + proportions
+# Fig 21: Spatial co-expression maps + proportions
 # ===================================================================
 
 # Co-expression category colours
@@ -328,12 +326,14 @@ def plot_gal_coexpression(
         adata, condition_key, representative_slides
     )
     conditions = sorted(adata.obs[condition_key].unique())
+    # Spatial panels limited to first 2 conditions (adult/aged)
+    spatial_conds = conditions[:2]
 
     fig = plt.figure(figsize=(DOUBLE * 1.1, DOUBLE * 0.55))
     gs = gridspec.GridSpec(1, 3, figure=fig, width_ratios=[1, 1, 0.8], wspace=0.35)
 
     # --- Panels A-B: spatial co-expression maps ---
-    for ci, cond in enumerate(conditions):
+    for ci, cond in enumerate(spatial_conds):
         ax = fig.add_subplot(gs[ci])
         cond_mask = adata.obs[condition_key] == cond
         sid = rep_slides.get(cond)
@@ -421,7 +421,7 @@ def plot_gal_coexpression(
 
 
 # ===================================================================
-# Fig 21: Regional / cluster breakdown of galanin system
+# Fig 22: Regional / cluster breakdown of galanin system
 # ===================================================================
 
 def plot_gal_regional(
@@ -564,7 +564,7 @@ def plot_gal_regional(
 
 
 # ===================================================================
-# Fig 22: Neighborhood / niche receptor availability
+# Fig 23: Neighborhood / niche receptor availability
 # ===================================================================
 
 def plot_gal_niche(
@@ -703,7 +703,7 @@ def plot_gal_niche(
 
 
 # ===================================================================
-# Fig 23: Ligand-receptor spatial proximity
+# Fig 24: Ligand-receptor spatial proximity
 # ===================================================================
 
 def plot_gal_proximity(
@@ -827,7 +827,7 @@ def plot_gal_proximity(
 
 
 # ===================================================================
-# Fig 24: Composite "galanin resistance" summary figure
+# Fig 25: Composite "galanin resistance" summary figure
 # ===================================================================
 
 def plot_gal_resistance_summary(

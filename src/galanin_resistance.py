@@ -18,14 +18,14 @@ All functions accept an AnnData with .obsm['spatial'] and log-normalised .X.
 """
 
 import logging
-from typing import Optional, Sequence
+from typing import Optional
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from scipy.spatial import cKDTree
-from scipy.stats import mannwhitneyu, chi2_contingency, ranksums
+from scipy.stats import chi2_contingency, ranksums
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def _get_expr_vector(adata: ad.AnnData, gene: str) -> np.ndarray:
     """Return dense 1-D expression vector for *gene* from lognorm layer."""
     if gene not in adata.var_names:
         return np.zeros(adata.n_obs, dtype=np.float32)
-    idx = list(adata.var_names).index(gene)
+    idx = adata.var_names.get_loc(gene)
     X = adata.layers["lognorm"] if "lognorm" in adata.layers else adata.X
     col = X[:, idx]
     if sp.issparse(col):

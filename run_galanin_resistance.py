@@ -105,25 +105,25 @@ def main():
         dpi=args.dpi,
     )
 
-    logger.info("Generating Fig 18: spatial expression maps ...")
+    logger.info("Generating Fig 19: spatial expression maps ...")
     plot_gal_spatial_maps(adata, spot_size=args.spot_size, **fig_kwargs)
 
-    logger.info("Generating Fig 19: expression & resistance index ...")
+    logger.info("Generating Fig 20: expression & resistance index ...")
     plot_gal_expression_and_resistance(adata, **fig_kwargs)
 
-    logger.info("Generating Fig 20: co-expression maps ...")
+    logger.info("Generating Fig 21: co-expression maps ...")
     plot_gal_coexpression(adata, spot_size=args.spot_size, **fig_kwargs)
 
-    logger.info("Generating Fig 21: regional breakdown ...")
+    logger.info("Generating Fig 22: regional breakdown ...")
     plot_gal_regional(adata, region_key=args.region_key, **fig_kwargs)
 
-    logger.info("Generating Fig 22: niche analysis ...")
+    logger.info("Generating Fig 23: niche analysis ...")
     plot_gal_niche(adata, k=args.k_niche, spot_size=args.spot_size, **fig_kwargs)
 
-    logger.info("Generating Fig 23: ligand-receptor proximity ...")
+    logger.info("Generating Fig 24: ligand-receptor proximity ...")
     plot_gal_proximity(adata, **fig_kwargs)
 
-    logger.info("Generating Fig 24: composite summary ...")
+    logger.info("Generating Fig 25: composite summary ...")
     plot_gal_resistance_summary(
         adata, k=args.k_niche, spot_size=args.spot_size, **fig_kwargs,
     )
