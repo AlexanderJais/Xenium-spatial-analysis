@@ -57,21 +57,6 @@ def _check_genes(adata: ad.AnnData) -> dict[str, bool]:
     return {g: g in adata.var_names for g in GAL_SYSTEM_GENES}
 
 
-def _bh_correct(pvalues: np.ndarray) -> np.ndarray:
-    """Benjamini-Hochberg FDR correction."""
-    from scipy.stats import rankdata
-    n = len(pvalues)
-    if n == 0:
-        return pvalues
-    ranks = rankdata(pvalues, method="ordinal")
-    p_adj = pvalues * n / ranks
-    order = np.argsort(ranks)[::-1]
-    p_adj_sorted = p_adj[order]
-    cummin = np.minimum.accumulate(p_adj_sorted)
-    p_adj[order] = cummin
-    return np.clip(p_adj, 0, 1)
-
-
 # ---------------------------------------------------------------------------
 # 1. Galanin resistance index
 # ---------------------------------------------------------------------------
@@ -215,15 +200,24 @@ def coexpression_proportions(
     for cond in sorted(set(conditions)):
         mask = conditions == cond
         n_gal = int((gal & mask).sum())
-        n_galr1 = int((gal & galr1 & mask).sum())
-        n_galr3 = int((gal & galr3 & mask).sum())
+        # Use mutually exclusive categories to avoid double-counting
+        # triple-positive (Gal+Galr1+Galr3+) cells
+        n_galr1_only = int((gal & galr1 & ~galr3 & mask).sum())
+        n_galr3_only = int((gal & ~galr1 & galr3 & mask).sum())
+        n_both_rec = int((gal & galr1 & galr3 & mask).sum())
+        n_galr1_any = int((gal & galr1 & mask).sum())
+        n_galr3_any = int((gal & galr3 & mask).sum())
+        n_any_rec = int((gal & (galr1 | galr3) & mask).sum())
         rows.append({
             "condition": cond,
             "n_gal_pos": n_gal,
-            "n_gal_galr1": n_galr1,
-            "n_gal_galr3": n_galr3,
-            "pct_galr1": 100.0 * n_galr1 / max(n_gal, 1),
-            "pct_galr3": 100.0 * n_galr3 / max(n_gal, 1),
+            "n_gal_galr1": n_galr1_any,
+            "n_gal_galr3": n_galr3_any,
+            "n_gal_both_receptors": n_both_rec,
+            "n_gal_any_receptor": n_any_rec,
+            "pct_galr1": 100.0 * n_galr1_any / max(n_gal, 1),
+            "pct_galr3": 100.0 * n_galr3_any / max(n_gal, 1),
+            "pct_any_receptor": 100.0 * n_any_rec / max(n_gal, 1),
         })
 
     df = pd.DataFrame(rows)
@@ -279,9 +273,10 @@ def niche_receptor_score(
     scores = np.full(adata.n_obs, np.nan, dtype=np.float64)
     gal_indices = np.where(gal)[0]
 
-    for ci in gal_indices:
-        nbrs = nbr_idx[ci]
-        scores[ci] = float(receptor_pos[nbrs].sum()) / _k
+    if len(gal_indices) > 0:
+        # Vectorised: look up all neighbour indices at once
+        gal_nbrs = nbr_idx[gal_indices]          # (n_gal, _k)
+        scores[gal_indices] = receptor_pos[gal_nbrs].sum(axis=1) / _k
 
     if store_in_obs:
         adata.obs["niche_receptor_score"] = scores
@@ -304,6 +299,7 @@ def niche_receptor_score(
 def ligand_receptor_distances(
     adata: ad.AnnData,
     threshold: float = 0.0,
+    condition_key: str = "condition",
 ) -> dict[str, np.ndarray]:
     """
     Compute nearest-neighbour distances from each Gal+ cell to the closest
@@ -315,6 +311,8 @@ def ligand_receptor_distances(
         Must have .obsm['spatial'].
     threshold : float
         Expression threshold for positivity.
+    condition_key : str
+        obs column with condition labels.
 
     Returns
     -------
@@ -336,7 +334,7 @@ def ligand_receptor_distances(
 
     result = {
         "gal_cell_idx": gal_idx,
-        "condition": adata.obs["condition"].values[gal_idx] if "condition" in adata.obs.columns else np.full(len(gal_idx), "unknown"),
+        "condition": adata.obs[condition_key].values[gal_idx] if condition_key in adata.obs.columns else np.full(len(gal_idx), "unknown"),
     }
 
     for name, receptor_mask in [("gal_to_galr1", galr1), ("gal_to_galr3", galr3)]:

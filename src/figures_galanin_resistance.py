@@ -23,7 +23,7 @@ from src.figures import (
 )
 from src.galanin_resistance import (
     GAL_GENE, GALR1_GENE, GALR3_GENE, GAL_SYSTEM_GENES,
-    _get_expr_vector, _check_genes,
+    _get_expr_vector,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,6 @@ logger = logging.getLogger(__name__)
 _EXPR_CMAP = mcolors.LinearSegmentedColormap.from_list(
     "grey_red", ["#2A2A2A", "#7B1010", "#CC2222", "#FF6B35", "#FFD166"], N=256,
 )
-# Gene identity colours (colour-blind safe)
-GENE_COLOURS = {GAL_GENE: "#E69F00", GALR1_GENE: "#56B4E9", GALR3_GENE: "#009E73"}
 
 
 def _resolve_slides(adata, condition_key, representative_slides):
@@ -139,9 +137,10 @@ def plot_gal_spatial_maps(
                 ax.set_ylabel(cond, fontsize=7, color="#EEE", labelpad=6)
 
     # Panel labels
-    labels = "abcdef"
+    labels = "abcdefghijklmnopqrstuvwxyz"
     for i, ax in enumerate(axes.ravel()):
-        _panel_label(ax, labels[i])
+        if i < len(labels):
+            _panel_label(ax, labels[i])
 
     fig.suptitle(
         "Galanin system spatial expression (Gal / Galr1 / Galr3)",
@@ -375,21 +374,16 @@ def plot_gal_coexpression(
     # --- Panel C: stacked bar proportions ---
     ax_c = fig.add_subplot(gs[2])
     coexpr_df = coexpression_proportions(adata, condition_key=condition_key)
+    cdf = coexpr_df.set_index("condition")
 
-    bar_cats = ["pct_galr1", "pct_galr3"]
-    bar_labels = ["Gal+Galr1+", "Gal+Galr3+"]
-    bar_colors = [_COEXPR_COLOURS["Gal+Galr1+"], _COEXPR_COLOURS["Gal+Galr3+"]]
-
+    # Use pct_any_receptor (non-overlapping with Gal+only) for stacked bar
     x = np.arange(len(conditions))
-    bottom = np.zeros(len(conditions))
-    for cat, lbl, col in zip(bar_cats, bar_labels, bar_colors):
-        vals = coexpr_df.set_index("condition").loc[conditions, cat].values
-        ax_c.bar(x, vals, bottom=bottom, color=col, width=0.5, label=lbl)
-        bottom += vals
+    pct_rec = cdf.loc[conditions, "pct_any_receptor"].values
+    pct_only = 100.0 - pct_rec
 
-    # Remainder = Gal+only
-    gal_only_pct = 100.0 - bottom
-    ax_c.bar(x, gal_only_pct, bottom=bottom, color=_COEXPR_COLOURS["Gal+only"],
+    ax_c.bar(x, pct_rec, color=_COEXPR_COLOURS["Gal+Galr1+"],
+             width=0.5, label="Gal+receptor+")
+    ax_c.bar(x, pct_only, bottom=pct_rec, color=_COEXPR_COLOURS["Gal+only"],
              width=0.5, label="Gal+only")
 
     ax_c.set_xticks(x)
@@ -728,7 +722,7 @@ def plot_gal_proximity(
     output_dir = Path(output_dir)
     apply_nature_style()
 
-    dist_data = ligand_receptor_distances(adata)
+    dist_data = ligand_receptor_distances(adata, condition_key=condition_key)
     conditions = sorted(set(dist_data["condition"]))
     cond_col = {
         c: CONDITION_COLOURS.get(c, WONG[i % len(WONG)])
@@ -1005,7 +999,7 @@ def plot_gal_resistance_summary(
 
     # --- F: Distance KDE ---
     ax_f = fig.add_subplot(gs[1, 2])
-    dist_data = ligand_receptor_distances(adata)
+    dist_data = ligand_receptor_distances(adata, condition_key=condition_key)
     dists = dist_data["gal_to_galr1"]
     conds = dist_data["condition"]
 
