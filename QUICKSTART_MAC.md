@@ -150,7 +150,7 @@ Saved ROIs are reused automatically on every subsequent run.
 ## 8. View results
 
 **Web app (📊 Results):**
-- All 17 figures displayed inline with dropdown selector and thumbnail gallery
+- Up to 25 figures displayed inline with dropdown selector and thumbnail gallery (figures 18--25 require Gal in the gene panel)
 - Download buttons for each figure
 - Tabs for: Global DGE table, Cluster DGE table, Moran's I, Panel validation, AnnData `.h5ad`
 

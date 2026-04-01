@@ -79,7 +79,7 @@ Or double-click `start_app.command` in Finder. Your browser opens at http://loca
 | **⚙️ Pipeline Settings** | All analysis parameters: panel mode, DGE method, QC thresholds, Leiden resolution, figure format, DPI. |
 | **🗺️ ROI Manager** | Interactive Plotly scatter for each slide. Use sliders to frame the MBH bounding rectangle; dashed orange ellipse provides an atlas hint. Manual coordinate entry as fallback. ROIs saved to `roi_cache/` and reused automatically. |
 | **🚀 Run Pipeline** | Pre-flight validation, then one-click launch. Live colour-coded log with progress stages. Stop button always available. |
-| **📊 Results** | All 17 figures inline with dropdown + thumbnail gallery. Download buttons for each figure. Tabs for DGE tables, Moran's I, panel validation, and the final AnnData `.h5ad`. |
+| **📊 Results** | Up to 25 figures inline with dropdown + thumbnail gallery. Download buttons for each figure. Tabs for DGE tables, Moran's I, Galanin resistance data, panel validation, and the final AnnData `.h5ad`. |
 | **🔬 Gene Explorer** | On-demand spatial expression map for any gene across all MBH slides. No pipeline rerun needed — reads from the preprocessed AnnData cache. |
 | **ℹ️ Help** | Full inline documentation: setup guide, panel structure, ROI drawing instructions, parameter reference, figure descriptions, troubleshooting. |
 
@@ -149,6 +149,16 @@ All figures follow **Nature Publishing Group** standards: column widths 89/183 m
 | fig15_galanin | Galanin spatial maps, split violin per cell type, log2FC lollipop |
 | fig16_composition | Cell type composition testing (scCODA Bayesian model + CLR t-test fallback) |
 | fig17_neuropeptide_modules | Neuropeptide co-expression modules: UMAP, z-scored heatmap, AGED vs ADULT bar comparison, spatial maps. Modules: AgRP/NPY, POMC/CART, KNDy, Somatostatin, TRH/Dopamine, Galanin |
+| fig18_gal_coexpression | Galanin (Gal) co-expression partners |
+| fig19_gal_spatial_maps | Galanin system spatial maps: 2x3 grid of Gal / Galr1 / Galr3 per condition |
+| fig20_gal_expression_resistance | Galanin expression violins + Galanin Resistance Index (GRI) |
+| fig21_gal_coexpression | Galanin-receptor co-expression status maps per condition |
+| fig22_gal_regional | Regional breakdown of Gal / Galr1 / Galr3 expression by cell type |
+| fig23_gal_niche | Spatial niche receptor availability scores around Gal+ cells |
+| fig24_gal_proximity | Ligand-receptor nearest-neighbour distance analysis |
+| fig25_gal_resistance_summary | Composite 4-panel Galanin resistance summary |
+
+> **Note:** Figures 18--25 require **Gal** (and ideally **Galr1**, **Galr3**) in the gene panel. These genes are **not** in the base `Xenium_mBrain_v1_1` panel (~247 genes) and must be added via per-slide custom panels. When Gal is absent, the pipeline skips the Galanin resistance analysis and generates placeholder figures where applicable.
 
 ### Data files
 
@@ -159,6 +169,8 @@ All figures follow **Nature Publishing Group** standards: column widths 89/183 m
 | `cluster_dge_summary.csv` | DEG counts per cluster |
 | `morans_i_mbh.csv` | Spatially variable genes (Moran's I) |
 | `panel_validation.csv` | Per-slide gene panel composition and validation |
+| `gal_coexpression_proportions.csv` | Galanin-receptor co-expression rates per condition (requires Gal in panel) |
+| `gal_regional_expression.csv` | Per-region mean Galanin system expression + resistance index (requires Gal in panel) |
 | `adata_mbh_final.h5ad` | Final annotated AnnData object |
 
 ---
@@ -248,8 +260,10 @@ xenium_dge/
     ├── spatial_stats.py         Moran's I, co-expression, neighbourhood enrichment
     ├── pipeline.py              Two-condition pipeline orchestrator
     ├── figures.py               Nature-grade figures 1--8
-    ├── figures_extended.py      Nature-grade figures 9--11, 14--17
-    └── figures_panel.py         Nature-grade figures 12--13 (slide/panel QC)
+    ├── figures_extended.py      Nature-grade figures 9--11, 14--18
+    ├── figures_panel.py         Nature-grade figures 12--13 (slide/panel QC)
+    ├── galanin_resistance.py    Galanin resistance index computation and co-expression analysis
+    └── figures_galanin_resistance.py  Nature-grade figures 19--25 (Galanin resistance)
 ```
 
 ---
@@ -265,7 +279,7 @@ Measured on M4 Pro with 48 GB RAM:
 | PCA + Harmony batch correction | ~1 GB peak |
 | UMAP + Leiden clustering | ~500 MB |
 | DGE (pseudobulk or cell-level) | ~200 MB |
-| Figure generation (17 figures) | ~500 MB |
+| Figure generation (up to 25 figures) | ~500 MB |
 | **Total peak** | **~3--4 GB** |
 
 For datasets with 50 000+ cells per slide, set `n_top_genes = 100` to reduce the HVG feature space and memory footprint.
