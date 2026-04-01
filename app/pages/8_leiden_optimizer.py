@@ -50,9 +50,10 @@ st.divider()
 out_dir = Path(st.session_state.get("output_dir", ""))
 adata_path = out_dir / "adata_preprocessed.h5ad"
 adata_final_path = out_dir / "adata_final.h5ad"
+adata_mbh_final_path = out_dir / "adata_mbh_final.h5ad"
 
 # Try to find usable AnnData
-_candidate_paths = [adata_path, adata_final_path]
+_candidate_paths = [adata_path, adata_final_path, adata_mbh_final_path]
 _found_path = None
 for _p in _candidate_paths:
     if _p.exists():
@@ -67,7 +68,10 @@ if _found_path is None:
         "to evaluate clustering quality."
     )
     st.info(
-        f"Expected file at: `{adata_path}`\n\n"
+        f"Expected one of:\n"
+        f"- `{adata_path}`\n"
+        f"- `{adata_final_path}`\n"
+        f"- `{adata_mbh_final_path}`\n\n"
         "Alternatively, you can upload an `.h5ad` file below."
     )
 
