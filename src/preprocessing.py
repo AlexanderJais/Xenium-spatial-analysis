@@ -675,7 +675,6 @@ def run_leiden(
 def optimize_leiden_resolution(
     adata: ad.AnnData,
     resolutions: Optional[list[float]] = None,
-    key_added: str = "leiden",
     random_state: int = 42,
     use_rep: Optional[str] = None,
     n_sample: int = 50_000,
@@ -693,8 +692,6 @@ def optimize_leiden_resolution(
     resolutions
         List of resolution values to test.  Defaults to a fine grid
         from 0.1 to 2.0.
-    key_added
-        Temporary obs key used for each clustering run.
     random_state
         Random seed for reproducibility.
     use_rep
@@ -753,8 +750,19 @@ def optimize_leiden_resolution(
     # Retrieve the adjacency / connectivity graph for modularity
     try:
         import igraph as ig
+        import scipy.sparse as sp
         adj = adata.obsp["connectivities"]
-        g = ig.Graph.Weighted_Adjacency(adj, mode="undirected")
+        # Convert sparse matrix to igraph via edge list (memory-efficient)
+        if sp.issparse(adj):
+            coo = adj.tocoo()
+            edges = list(zip(coo.row.tolist(), coo.col.tolist()))
+            weights = coo.data.tolist()
+            g = ig.Graph(n=adj.shape[0], edges=edges, directed=False)
+            g.es["weight"] = weights
+            # Remove self-loops and duplicate edges from symmetry
+            g.simplify(combine_edges="first")
+        else:
+            g = ig.Graph.Weighted_Adjacency(adj.tolist(), mode="undirected")
         _has_igraph = True
     except (ImportError, KeyError):
         _has_igraph = False
@@ -790,7 +798,8 @@ def optimize_leiden_resolution(
 
         # Modularity (on full graph)
         if _has_igraph and n_clusters >= 2:
-            membership = labels.astype(int).values.tolist()
+            # Leiden returns string categories ("0", "1", ...); convert via int()
+            membership = [int(x) for x in labels.values]
             mod = float(g.modularity(membership, weights="weight"))
         else:
             mod = 0.0

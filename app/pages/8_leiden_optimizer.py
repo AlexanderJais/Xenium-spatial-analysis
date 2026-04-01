@@ -108,7 +108,8 @@ if res_min >= res_max:
     st.stop()
 
 import numpy as np
-resolutions = [round(r, 2) for r in np.arange(res_min, res_max + res_step / 2, res_step)]
+n_steps = int(round((res_max - res_min) / res_step)) + 1
+resolutions = [round(res_min + i * res_step, 2) for i in range(n_steps)]
 st.caption(f"Will test **{len(resolutions)}** resolutions: {resolutions[0]} – {resolutions[-1]}")
 
 c4, c5 = st.columns(2)
@@ -117,7 +118,7 @@ with c4:
         "Max cells for silhouette score",
         1000, 200_000, 50_000, 5000,
         help="Silhouette score is O(n^2). Subsampling speeds up the sweep "
-             "with minimal impact on ranking. Set to 0 to use all cells.",
+             "with minimal impact on ranking.",
     )
 with c5:
     st.info(
@@ -254,7 +255,7 @@ if df is not None and best_res is not None:
         go.Bar(
             x=df["resolution"], y=df["n_clusters"],
             name="Clusters",
-            marker_color=["#E74C3C" if r == best_res else "#90C8F0"
+            marker_color=["#E74C3C" if abs(r - best_res) < 1e-6 else "#90C8F0"
                           for r in df["resolution"]],
         ),
         row=1, col=2,
