@@ -26,6 +26,9 @@ harmonypy >= 0.0.9
 # ── Differential expression ───────────────────────────────────────────────────
 pydeseq2 >= 0.4           # optional; wilcoxon used as fallback
 
+# ── Cluster quality metrics ───────────────────────────────────────────────────
+scikit-learn >= 1.3           # silhouette, Calinski-Harabasz, Davies-Bouldin
+
 # ── Clustering ────────────────────────────────────────────────────────────────
 leidenalg >= 0.10
 igraph >= 0.11

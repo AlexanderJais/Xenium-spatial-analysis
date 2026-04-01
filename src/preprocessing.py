@@ -681,8 +681,26 @@ def optimize_leiden_resolution(
     callback=None,
 ) -> dict:
     """
-    Sweep Leiden resolutions and score each with silhouette, modularity,
-    and cluster count to recommend the best resolution.
+    Sweep Leiden resolutions and score each with multiple cluster quality
+    metrics to recommend the best resolution.
+
+    Metrics computed at each resolution:
+
+    * **Silhouette score** — measures how similar each cell is to its own
+      cluster versus the nearest neighbouring cluster in PCA/latent space.
+      Range [-1, 1]; higher = better separated clusters.
+    * **Calinski-Harabasz index** (variance ratio criterion) — ratio of
+      between-cluster to within-cluster dispersion.  Higher = more compact
+      and well-separated clusters.
+    * **Davies-Bouldin index** — average similarity between each cluster and
+      its most similar one.  Lower = better.
+    * **Modularity** — community structure quality on the KNN graph.
+    * **Spatial coherence** — fraction of each cell's spatial neighbours
+      that belong to the same cluster (requires ``adata.obsm['spatial']``).
+      Higher = more spatially contiguous clusters.
+
+    Additionally, cluster assignments at every resolution are stored so that
+    a **clustree** plot can be generated downstream.
 
     Parameters
     ----------
@@ -695,11 +713,12 @@ def optimize_leiden_resolution(
     random_state
         Random seed for reproducibility.
     use_rep
-        Representation in ``adata.obsm`` for silhouette score
+        Representation in ``adata.obsm`` for silhouette / CH / DB scores
         (e.g. ``'X_pca'``, ``'X_pca_harmony'``).  Auto-detected if *None*.
     n_sample
         Max cells to subsample for silhouette score (expensive at O(n²)).
-        Set to 0 to use all cells.
+        Calinski-Harabasz and Davies-Bouldin are also evaluated on the
+        subsample for consistency.  Set to 0 to use all cells.
     callback
         Optional ``callback(step, total, resolution, metrics_dict)``
         called after each resolution is evaluated — useful for progress
@@ -709,18 +728,26 @@ def optimize_leiden_resolution(
     -------
     dict with keys:
         ``"results"``   – :class:`pandas.DataFrame` with columns
-            ``resolution``, ``n_clusters``, ``silhouette``, ``modularity``,
-            ``combined_score``.
+            ``resolution``, ``n_clusters``, ``silhouette``,
+            ``calinski_harabasz``, ``davies_bouldin``,
+            ``spatial_coherence``, ``modularity``, ``combined_score``.
         ``"best_resolution"`` – float, the resolution with the highest
             combined score.
         ``"best_row"``  – dict of the best row.
+        ``"cluster_assignments"`` – :class:`pandas.DataFrame` with one
+            column per resolution (``leiden_0.10``, ``leiden_0.20``, …)
+            and one row per cell.  Used for clustree visualisation.
     """
-    from sklearn.metrics import silhouette_score as _silhouette_score
+    from sklearn.metrics import (
+        silhouette_score as _silhouette_score,
+        calinski_harabasz_score as _ch_score,
+        davies_bouldin_score as _db_score,
+    )
 
     if resolutions is None:
         resolutions = [round(r, 2) for r in np.arange(0.1, 2.05, 0.1)]
 
-    # Auto-detect embedding for silhouette
+    # Auto-detect embedding for cluster quality metrics
     if use_rep is None:
         for candidate in ("X_pca_harmony", "X_pca"):
             if candidate in adata.obsm:
@@ -731,14 +758,35 @@ def optimize_leiden_resolution(
                 "No PCA embedding found in adata.obsm. "
                 "Run PCA (and optionally Harmony) before resolution optimisation."
             )
+
+    # Detect spatial coordinates for spatial coherence
+    _has_spatial = "spatial" in adata.obsm
+    _spatial_tree = None
+    _spatial_k = 15  # neighbours for spatial coherence
+    if _has_spatial:
+        from scipy.spatial import cKDTree
+        xy = adata.obsm["spatial"].astype(np.float64)
+        _spatial_tree = cKDTree(xy)
+        _spatial_k = min(_spatial_k, adata.n_obs - 1)
+        _, _spatial_nbr_idx = _spatial_tree.query(xy, k=_spatial_k + 1)
+        _spatial_nbr_idx = _spatial_nbr_idx[:, 1:]  # exclude self
+        logger.info(
+            "Spatial coherence enabled: k=%d spatial neighbours", _spatial_k,
+        )
+    else:
+        logger.info(
+            "No spatial coordinates found (obsm['spatial']); "
+            "spatial coherence will be reported as NaN."
+        )
+
     logger.info(
         "Leiden resolution sweep: %d resolutions (%.2f – %.2f), "
-        "silhouette on '%s', %s cells",
+        "metrics on '%s', %s cells",
         len(resolutions), min(resolutions), max(resolutions),
         use_rep, f"subsampled to {n_sample}" if 0 < n_sample < adata.n_obs else "all",
     )
 
-    # Subsample indices once for consistent silhouette evaluation
+    # Subsample indices once for consistent metric evaluation
     if 0 < n_sample < adata.n_obs:
         rng = np.random.RandomState(random_state)
         sample_idx = rng.choice(adata.n_obs, size=n_sample, replace=False)
@@ -768,6 +816,7 @@ def optimize_leiden_resolution(
         _has_igraph = False
 
     rows: list[dict] = []
+    cluster_cols: dict[str, np.ndarray] = {}  # for clustree
     tmp_key = f"_leiden_opt_{random_state}"
 
     for step_i, res in enumerate(resolutions):
@@ -786,19 +835,39 @@ def optimize_leiden_resolution(
 
         labels = adata.obs[tmp_key].astype("category")
         n_clusters = labels.nunique()
+        labels_int = labels.cat.codes.values  # integer codes for sklearn
 
-        # Silhouette score (on subsample)
-        labels_sub = labels.values[sample_idx]
+        # Store cluster assignments for clustree
+        col_name = f"leiden_{res:.2f}"
+        cluster_cols[col_name] = labels.values.copy()
+
+        # --- Silhouette score (on subsample) ---
+        labels_sub = labels_int[sample_idx]
         if n_clusters < 2:
             sil = -1.0
+            ch = 0.0
+            db = float("nan")
         else:
             sil = float(_silhouette_score(
                 embedding, labels_sub, metric="euclidean", sample_size=None,
             ))
+            # --- Calinski-Harabasz index (on subsample) ---
+            ch = float(_ch_score(embedding, labels_sub))
+            # --- Davies-Bouldin index (on subsample) ---
+            db = float(_db_score(embedding, labels_sub))
 
-        # Modularity (on full graph)
+        # --- Spatial coherence ---
+        if _has_spatial and n_clusters >= 2:
+            # For each cell, fraction of spatial neighbours in the same cluster
+            labels_arr = labels_int
+            nbr_labels = labels_arr[_spatial_nbr_idx]  # (n_cells, k)
+            same_cluster = (nbr_labels == labels_arr[:, None]).mean(axis=1)
+            spatial_coh = float(same_cluster.mean())
+        else:
+            spatial_coh = float("nan")
+
+        # --- Modularity (on full graph) ---
         if _has_igraph and n_clusters >= 2:
-            # Leiden returns string categories ("0", "1", ...); convert via int()
             membership = [int(x) for x in labels.values]
             mod = float(g.modularity(membership, weights="weight"))
         else:
@@ -808,12 +877,19 @@ def optimize_leiden_resolution(
             "resolution": res,
             "n_clusters": n_clusters,
             "silhouette": round(sil, 4),
+            "calinski_harabasz": round(ch, 2),
+            "davies_bouldin": round(db, 4) if not np.isnan(db) else float("nan"),
+            "spatial_coherence": round(spatial_coh, 4) if not np.isnan(spatial_coh) else float("nan"),
             "modularity": round(mod, 4),
         }
         rows.append(row)
         logger.info(
-            "  res=%.2f  clusters=%d  silhouette=%.4f  modularity=%.4f",
-            res, n_clusters, sil, mod,
+            "  res=%.2f  clusters=%d  sil=%.4f  CH=%.1f  DB=%.4f  "
+            "spatial_coh=%.4f  mod=%.4f",
+            res, n_clusters, sil, ch,
+            db if not np.isnan(db) else 0.0,
+            spatial_coh if not np.isnan(spatial_coh) else 0.0,
+            mod,
         )
 
         if callback is not None:
@@ -825,40 +901,69 @@ def optimize_leiden_resolution(
 
     df = pd.DataFrame(rows)
 
-    # Combined score: weighted average of normalised silhouette & modularity.
-    # Silhouette range is [-1, 1], modularity is [0, 1] typically.
-    # Normalise both to [0, 1] range before combining.
-    sil_min, sil_max = df["silhouette"].min(), df["silhouette"].max()
-    mod_min, mod_max = df["modularity"].min(), df["modularity"].max()
+    # --- Combined score ---
+    # Normalise each metric to [0, 1] then take weighted average.
+    # Silhouette [-1, 1]: higher is better
+    # Calinski-Harabasz [0, ∞): higher is better
+    # Davies-Bouldin [0, ∞): LOWER is better → invert
+    # Spatial coherence [0, 1]: higher is better (may be NaN)
+    # Modularity [−0.5, 1]: higher is better
 
-    sil_range = sil_max - sil_min if sil_max > sil_min else 1.0
-    mod_range = mod_max - mod_min if mod_max > mod_min else 1.0
+    def _norm_col(s: pd.Series, invert: bool = False) -> pd.Series:
+        """Min-max normalise to [0, 1]; if invert, flip so lower raw = higher norm."""
+        s = s.copy()
+        s_min, s_max = s.min(), s.max()
+        rng = s_max - s_min if s_max > s_min else 1.0
+        normed = (s - s_min) / rng
+        return (1.0 - normed) if invert else normed
 
-    df["sil_norm"] = (df["silhouette"] - sil_min) / sil_range
-    df["mod_norm"] = (df["modularity"] - mod_min) / mod_range
+    sil_norm = _norm_col(df["silhouette"])
+    ch_norm = _norm_col(df["calinski_harabasz"])
+    db_norm = _norm_col(df["davies_bouldin"], invert=True)
+    mod_norm = _norm_col(df["modularity"])
 
-    # 60% silhouette, 40% modularity — silhouette penalises over-fragmentation
-    df["combined_score"] = (0.6 * df["sil_norm"] + 0.4 * df["mod_norm"]).round(4)
+    has_spatial_scores = df["spatial_coherence"].notna().all()
+    if has_spatial_scores:
+        sc_norm = _norm_col(df["spatial_coherence"])
+        # Weights: silhouette 30%, CH 15%, DB 15%, spatial coherence 20%, modularity 20%
+        df["combined_score"] = (
+            0.30 * sil_norm
+            + 0.15 * ch_norm
+            + 0.15 * db_norm
+            + 0.20 * sc_norm
+            + 0.20 * mod_norm
+        ).round(4)
+    else:
+        # No spatial data — fall back to non-spatial weights
+        # Weights: silhouette 35%, CH 15%, DB 15%, modularity 35%
+        df["combined_score"] = (
+            0.35 * sil_norm
+            + 0.15 * ch_norm
+            + 0.15 * db_norm
+            + 0.35 * mod_norm
+        ).round(4)
 
     best_idx = int(df["combined_score"].idxmax())
     best_row = df.iloc[best_idx]
     best_res = float(best_row["resolution"])
 
     logger.info(
-        "Optimal Leiden resolution: %.2f  (clusters=%d, silhouette=%.4f, "
-        "modularity=%.4f, combined=%.4f)",
+        "Optimal Leiden resolution: %.2f  (clusters=%d, sil=%.4f, "
+        "CH=%.1f, DB=%.4f, spatial_coh=%.4f, mod=%.4f, combined=%.4f)",
         best_res, int(best_row["n_clusters"]),
-        best_row["silhouette"], best_row["modularity"],
-        best_row["combined_score"],
+        best_row["silhouette"], best_row["calinski_harabasz"],
+        best_row["davies_bouldin"], best_row.get("spatial_coherence", 0.0),
+        best_row["modularity"], best_row["combined_score"],
     )
 
-    # Drop helper columns from output
-    df_out = df.drop(columns=["sil_norm", "mod_norm"])
+    # Build clustree assignment DataFrame
+    cluster_df = pd.DataFrame(cluster_cols, index=adata.obs_names)
 
     return {
-        "results": df_out,
+        "results": df,
         "best_resolution": best_res,
-        "best_row": df_out.iloc[best_idx].to_dict(),
+        "best_row": df.iloc[best_idx].to_dict(),
+        "cluster_assignments": cluster_df,
     }
 
 
