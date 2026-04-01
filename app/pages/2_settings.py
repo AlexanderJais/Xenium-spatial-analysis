@@ -185,6 +185,15 @@ with p2:
     )
     st.session_state["leiden_resolution"] = float(v)
 
+    try:
+        st.page_link(
+            "pages/8_leiden_optimizer.py",
+            label="Not sure? Auto-detect optimal resolution",
+            icon="🔎",
+        )
+    except AttributeError:
+        st.caption("Tip: use the **Leiden Optimizer** page to auto-detect the best resolution.")
+
 with p3:
     v = st.number_input(
         "KNN neighbours (UMAP / graph)",

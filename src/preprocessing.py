@@ -6,9 +6,11 @@ Harmony integration, UMAP and Leiden clustering for Xenium data.
 """
 
 import logging
+from typing import Optional
 
 import anndata as ad
 import numpy as np
+import pandas as pd
 import scanpy as sc
 
 logger = logging.getLogger(__name__)
@@ -664,6 +666,191 @@ def run_leiden(
     n_clusters = adata.obs[key_added].nunique()
     logger.info("Leiden clustering: %d clusters at resolution %.2f", n_clusters, resolution)
     return adata
+
+
+# ===========================================================================
+# Automated Leiden resolution optimisation
+# ===========================================================================
+
+def optimize_leiden_resolution(
+    adata: ad.AnnData,
+    resolutions: Optional[list[float]] = None,
+    key_added: str = "leiden",
+    random_state: int = 42,
+    use_rep: Optional[str] = None,
+    n_sample: int = 50_000,
+    callback=None,
+) -> dict:
+    """
+    Sweep Leiden resolutions and score each with silhouette, modularity,
+    and cluster count to recommend the best resolution.
+
+    Parameters
+    ----------
+    adata
+        Pre-processed AnnData with a neighbour graph already computed
+        (i.e. ``adata.obsp['connectivities']`` exists).
+    resolutions
+        List of resolution values to test.  Defaults to a fine grid
+        from 0.1 to 2.0.
+    key_added
+        Temporary obs key used for each clustering run.
+    random_state
+        Random seed for reproducibility.
+    use_rep
+        Representation in ``adata.obsm`` for silhouette score
+        (e.g. ``'X_pca'``, ``'X_pca_harmony'``).  Auto-detected if *None*.
+    n_sample
+        Max cells to subsample for silhouette score (expensive at O(n²)).
+        Set to 0 to use all cells.
+    callback
+        Optional ``callback(step, total, resolution, metrics_dict)``
+        called after each resolution is evaluated — useful for progress
+        bars in the Streamlit UI.
+
+    Returns
+    -------
+    dict with keys:
+        ``"results"``   – :class:`pandas.DataFrame` with columns
+            ``resolution``, ``n_clusters``, ``silhouette``, ``modularity``,
+            ``combined_score``.
+        ``"best_resolution"`` – float, the resolution with the highest
+            combined score.
+        ``"best_row"``  – dict of the best row.
+    """
+    from sklearn.metrics import silhouette_score as _silhouette_score
+
+    if resolutions is None:
+        resolutions = [round(r, 2) for r in np.arange(0.1, 2.05, 0.1)]
+
+    # Auto-detect embedding for silhouette
+    if use_rep is None:
+        for candidate in ("X_pca_harmony", "X_pca"):
+            if candidate in adata.obsm:
+                use_rep = candidate
+                break
+        if use_rep is None:
+            raise ValueError(
+                "No PCA embedding found in adata.obsm. "
+                "Run PCA (and optionally Harmony) before resolution optimisation."
+            )
+    logger.info(
+        "Leiden resolution sweep: %d resolutions (%.2f – %.2f), "
+        "silhouette on '%s', %s cells",
+        len(resolutions), min(resolutions), max(resolutions),
+        use_rep, f"subsampled to {n_sample}" if 0 < n_sample < adata.n_obs else "all",
+    )
+
+    # Subsample indices once for consistent silhouette evaluation
+    if 0 < n_sample < adata.n_obs:
+        rng = np.random.RandomState(random_state)
+        sample_idx = rng.choice(adata.n_obs, size=n_sample, replace=False)
+    else:
+        sample_idx = np.arange(adata.n_obs)
+
+    embedding = adata.obsm[use_rep][sample_idx]
+
+    # Retrieve the adjacency / connectivity graph for modularity
+    try:
+        import igraph as ig
+        adj = adata.obsp["connectivities"]
+        g = ig.Graph.Weighted_Adjacency(adj, mode="undirected")
+        _has_igraph = True
+    except (ImportError, KeyError):
+        _has_igraph = False
+
+    rows: list[dict] = []
+    tmp_key = f"_leiden_opt_{random_state}"
+
+    for step_i, res in enumerate(resolutions):
+        # Run Leiden at this resolution
+        try:
+            sc.tl.leiden(
+                adata, resolution=res, key_added=tmp_key,
+                random_state=random_state, flavor="igraph",
+                n_iterations=2, directed=False,
+            )
+        except TypeError:
+            sc.tl.leiden(
+                adata, resolution=res, key_added=tmp_key,
+                random_state=random_state,
+            )
+
+        labels = adata.obs[tmp_key].astype("category")
+        n_clusters = labels.nunique()
+
+        # Silhouette score (on subsample)
+        labels_sub = labels.values[sample_idx]
+        if n_clusters < 2:
+            sil = -1.0
+        else:
+            sil = float(_silhouette_score(
+                embedding, labels_sub, metric="euclidean", sample_size=None,
+            ))
+
+        # Modularity (on full graph)
+        if _has_igraph and n_clusters >= 2:
+            membership = labels.astype(int).values.tolist()
+            mod = float(g.modularity(membership, weights="weight"))
+        else:
+            mod = 0.0
+
+        row = {
+            "resolution": res,
+            "n_clusters": n_clusters,
+            "silhouette": round(sil, 4),
+            "modularity": round(mod, 4),
+        }
+        rows.append(row)
+        logger.info(
+            "  res=%.2f  clusters=%d  silhouette=%.4f  modularity=%.4f",
+            res, n_clusters, sil, mod,
+        )
+
+        if callback is not None:
+            callback(step_i + 1, len(resolutions), res, row)
+
+    # Clean up temporary obs column
+    if tmp_key in adata.obs.columns:
+        del adata.obs[tmp_key]
+
+    df = pd.DataFrame(rows)
+
+    # Combined score: weighted average of normalised silhouette & modularity.
+    # Silhouette range is [-1, 1], modularity is [0, 1] typically.
+    # Normalise both to [0, 1] range before combining.
+    sil_min, sil_max = df["silhouette"].min(), df["silhouette"].max()
+    mod_min, mod_max = df["modularity"].min(), df["modularity"].max()
+
+    sil_range = sil_max - sil_min if sil_max > sil_min else 1.0
+    mod_range = mod_max - mod_min if mod_max > mod_min else 1.0
+
+    df["sil_norm"] = (df["silhouette"] - sil_min) / sil_range
+    df["mod_norm"] = (df["modularity"] - mod_min) / mod_range
+
+    # 60% silhouette, 40% modularity — silhouette penalises over-fragmentation
+    df["combined_score"] = (0.6 * df["sil_norm"] + 0.4 * df["mod_norm"]).round(4)
+
+    best_idx = int(df["combined_score"].idxmax())
+    best_row = df.iloc[best_idx]
+    best_res = float(best_row["resolution"])
+
+    logger.info(
+        "Optimal Leiden resolution: %.2f  (clusters=%d, silhouette=%.4f, "
+        "modularity=%.4f, combined=%.4f)",
+        best_res, int(best_row["n_clusters"]),
+        best_row["silhouette"], best_row["modularity"],
+        best_row["combined_score"],
+    )
+
+    # Drop helper columns from output
+    df_out = df.drop(columns=["sil_norm", "mod_norm"])
+
+    return {
+        "results": df_out,
+        "best_resolution": best_res,
+        "best_row": df_out.iloc[best_idx].to_dict(),
+    }
 
 
 # ===========================================================================

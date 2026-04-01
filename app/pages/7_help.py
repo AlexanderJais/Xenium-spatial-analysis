@@ -155,7 +155,7 @@ with tab_params:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | n_top_genes | 0 | Highly variable genes for PCA (0 = disabled, use all genes — recommended for Xenium) |
-| leiden_resolution | 0.6 | Higher = more, smaller clusters |
+| leiden_resolution | 0.6 | Higher = more, smaller clusters. Use the **Leiden Optimizer** page to auto-detect the best value. |
 | n_neighbors | 12 | KNN graph neighbours for UMAP and clustering |
 | harmony_max_iter | 30 | Harmony batch correction iterations (30 for robust convergence across 8 slides) |
 
@@ -267,6 +267,13 @@ directory you set there. Make sure it matches what you see in Results.
 The ROI Manager loads `cells.parquet` (all cell centroids) on demand.
 For very large slides (>50,000 cells) this may take a few seconds.
 The scatter is automatically subsampled to 15,000 cells for display speed.
+
+**Not sure which Leiden resolution to use?**
+Use the **Leiden Optimizer** page (page 8). It sweeps resolutions from 0.1 to 2.0,
+computes silhouette score (cluster separation) and modularity (graph community structure)
+for each, and recommends the resolution with the best combined score.
+Requires a preprocessed AnnData file with a KNN graph — run the pipeline once first,
+then use the optimizer to fine-tune the resolution and re-run.
 """)
 
 st.divider()
