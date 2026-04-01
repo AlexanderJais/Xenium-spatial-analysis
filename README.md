@@ -13,6 +13,7 @@ Runs entirely on your Mac. No data leaves your machine.
 - [Three ways to run](#three-ways-to-run)
 - [Installation](#installation)
 - [Web interface](#web-interface)
+- [Leiden Resolution Optimizer](#leiden-resolution-optimizer)
 - [Panel structure](#panel-structure)
 - [DGE methods](#dge-methods)
 - [Outputs](#outputs)
@@ -82,6 +83,33 @@ Or double-click `start_app.command` in Finder. Your browser opens at http://loca
 | **📊 Results** | Up to 25 figures inline with dropdown + thumbnail gallery. Download buttons for each figure. Tabs for DGE tables, Moran's I, Galanin resistance data, panel validation, and the final AnnData `.h5ad`. |
 | **🔬 Gene Explorer** | On-demand spatial expression map for any gene across all MBH slides. No pipeline rerun needed — reads from the preprocessed AnnData cache. |
 | **ℹ️ Help** | Full inline documentation: setup guide, panel structure, ROI drawing instructions, parameter reference, figure descriptions, troubleshooting. |
+| **🔎 Leiden Optimizer** | Automated resolution sweep with silhouette + modularity scoring. One-click apply to pipeline settings. |
+
+---
+
+## Leiden Resolution Optimizer
+
+Choosing the right Leiden clustering resolution is one of the hardest steps in spatial transcriptomics analysis. Too low and distinct cell types are merged; too high and biologically coherent populations are fragmented. The **Leiden Resolution Optimizer** (page 8 in the web interface) removes the guesswork.
+
+### What it does
+
+Sweeps Leiden clustering across a range of resolutions (default 0.1–2.0) and evaluates each using two complementary metrics:
+
+- **Silhouette score** (60% weight) — measures how well-separated clusters are in PCA/Harmony space. Penalises over-fragmentation.
+- **Modularity** (40% weight) — measures community structure quality in the KNN graph. Rewards well-connected clusters.
+
+Both metrics are normalised to [0,1] and combined into a single score to recommend the optimal resolution.
+
+### How to use it
+
+1. Run the main pipeline once (steps 1–4) to generate the preprocessed AnnData with PCA, Harmony, and KNN graph.
+2. Open the **🔎 Leiden Optimizer** page.
+3. Configure the sweep range (min/max resolution and step size) or use the defaults.
+4. Click **Run Resolution Sweep** — a progress bar shows each resolution being evaluated.
+5. Review the 4-panel results chart (combined score, cluster count, silhouette, modularity) and the full results table.
+6. Click **Apply** to update the pipeline Leiden resolution, then re-run the pipeline.
+
+Alternatively, upload any pre-processed `.h5ad` file with a KNN graph (`obsp['connectivities']`) and a PCA embedding (`obsm['X_pca']` or `obsm['X_pca_harmony']`).
 
 ---
 
@@ -235,7 +263,8 @@ xenium_dge/
 │       ├── 4_run.py             Launch pipeline + live log
 │       ├── 5_results.py         Figure viewer + data downloads
 │       ├── 6_gene_explorer.py   On-demand spatial expression maps
-│       └── 7_help.py            Inline documentation
+│       ├── 7_help.py            Inline documentation
+│       └── 8_leiden_optimizer.py  Automated Leiden resolution sweep
 │
 ├── run_xenium_mbh.py            End-to-end pipeline script
 │                                (single production entry point used by app, launcher, CLI)
