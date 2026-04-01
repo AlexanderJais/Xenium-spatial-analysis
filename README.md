@@ -83,33 +83,107 @@ Or double-click `start_app.command` in Finder. Your browser opens at http://loca
 | **📊 Results** | Up to 25 figures inline with dropdown + thumbnail gallery. Download buttons for each figure. Tabs for DGE tables, Moran's I, Galanin resistance data, panel validation, and the final AnnData `.h5ad`. |
 | **🔬 Gene Explorer** | On-demand spatial expression map for any gene across all MBH slides. No pipeline rerun needed — reads from the preprocessed AnnData cache. |
 | **ℹ️ Help** | Full inline documentation: setup guide, panel structure, ROI drawing instructions, parameter reference, figure descriptions, troubleshooting. |
-| **🔎 Leiden Optimizer** | Automated resolution sweep with silhouette + modularity scoring. One-click apply to pipeline settings. |
+| **🔎 Leiden Optimizer** | Multi-metric resolution sweep (silhouette, Calinski-Harabasz, Davies-Bouldin, spatial coherence, modularity) with clustree visualisation. One-click apply to pipeline settings. |
 
 ---
 
 ## Leiden Resolution Optimizer
 
-Choosing the right Leiden clustering resolution is one of the hardest steps in spatial transcriptomics analysis. Too low and distinct cell types are merged; too high and biologically coherent populations are fragmented. The **Leiden Resolution Optimizer** (page 8 in the web interface) removes the guesswork.
+Choosing the right Leiden clustering resolution is one of the hardest steps in spatial transcriptomics analysis. Too low and distinct cell types are merged; too high and biologically coherent populations are fragmented. The **Leiden Resolution Optimizer** (page 8 in the web interface) removes the guesswork by sweeping ~20 resolutions (default 0.1–2.0) and evaluating each with five complementary cluster quality metrics.
 
-### What it does
+### Metrics
 
-Sweeps Leiden clustering across a range of resolutions (default 0.1–2.0) and evaluates each using two complementary metrics:
+#### 1. Silhouette score
 
-- **Silhouette score** (60% weight) — measures how well-separated clusters are in PCA/Harmony space. Penalises over-fragmentation.
-- **Modularity** (40% weight) — measures community structure quality in the KNN graph. Rewards well-connected clusters.
+For every cell, the silhouette value compares:
+- **a** — mean distance to all other cells *in the same cluster* (compactness)
+- **b** — mean distance to cells in the *nearest neighbouring cluster* (separation)
 
-Both metrics are normalised to [0,1] and combined into a single score to recommend the optimal resolution.
+The per-cell silhouette is `(b − a) / max(a, b)`, ranging from −1 (wrong cluster) to +1 (perfectly placed). The average across all cells is reported.
+
+**How to read it:** Look for a peak or plateau as resolution increases. A declining silhouette at higher resolutions means clusters are being over-split — cells within new sub-clusters are no longer well-separated from their neighbours. A value above **0.25** generally indicates reasonable structure; above **0.5** is strong.
+
+> Computed in PCA/Harmony latent space on a subsample (default 50k cells) since it is O(n²).
+
+#### 2. Calinski-Harabasz index (variance ratio criterion)
+
+Compares between-cluster dispersion (how spread apart cluster centroids are) to within-cluster dispersion (how spread out cells are around their own centroid). Formally:
+
+```
+CH = [B / (k − 1)] / [W / (n − k)]
+```
+
+where B = between-cluster sum of squares, W = within-cluster sum of squares, k = number of clusters, n = number of cells.
+
+**How to read it:** Higher is better. The CH index tends to peak at resolutions where clusters are both compact and well-separated, then decreases as over-fragmentation creates small, noisy clusters. The absolute value scales with dataset size, so compare *within a single sweep*, not across datasets. Useful as a sanity check alongside silhouette — if both peak at the same resolution, that's a strong signal.
+
+#### 3. Davies-Bouldin index
+
+For each cluster, finds the most similar other cluster (the one with the worst separation-to-spread ratio) and averages across all clusters:
+
+```
+DB = (1/k) * Σ max_{j≠i} [(σ_i + σ_j) / d(c_i, c_j)]
+```
+
+where σ_i is the average distance of cells in cluster i to their centroid, and d(c_i, c_j) is the distance between centroids.
+
+**How to read it:** Lower is better (0 = perfect). A rising DB at higher resolutions signals over-fragmentation — new clusters are too close together relative to their internal spread. DB complements silhouette by focusing specifically on the *worst pairwise overlaps*, so it catches problems even when the average silhouette looks acceptable.
+
+#### 4. Spatial coherence
+
+For every cell, computes the fraction of its k=15 nearest *spatial* neighbours (on the tissue, using physical coordinates) that belong to the same cluster.
+
+**How to read it:** Higher is better (1.0 = all spatial neighbours in the same cluster). This metric is unique to spatial transcriptomics — it captures whether clusters form contiguous tissue domains rather than scattered salt-and-pepper patterns. A sharp drop at higher resolutions indicates that new sub-clusters are spatially interleaved rather than forming coherent regions. Typical good values are **0.5–0.8** depending on tissue architecture.
+
+> Only available when `adata.obsm['spatial']` is present. Omitted otherwise.
+
+#### 5. Modularity
+
+Measures community structure quality on the KNN graph (the same graph used by the Leiden algorithm itself). Modularity Q compares the fraction of edges within clusters to the expected fraction under a random null model.
+
+**How to read it:** Higher is better (range roughly 0–1). Modularity typically increases with resolution up to a point, then plateaus or slightly decreases. It rewards resolutions where the KNN graph has dense within-cluster connections and sparse between-cluster connections. Since Leiden directly optimises a modularity-like objective, this metric reflects how well the algorithm converged at each resolution.
+
+### Combined score
+
+All metrics are min-max normalised to [0, 1] across the sweep, then weighted:
+
+| Metric | With spatial coords | Without spatial coords |
+|--------|--------------------|-----------------------|
+| Silhouette | 30% | 35% |
+| Calinski-Harabasz | 15% | 15% |
+| Davies-Bouldin (inverted) | 15% | 15% |
+| Spatial coherence | 20% | — |
+| Modularity | 20% | 35% |
+
+The resolution with the highest combined score is recommended. Davies-Bouldin is inverted (lower raw → higher normalised) before combining.
+
+### Clustree plot
+
+The **clustree** (Sankey diagram) shows how cluster assignments change across resolutions. Each vertical level is a resolution; each node is a cluster. Edges connect clusters across consecutive resolutions, with width proportional to the number of cells flowing from one cluster to the next.
+
+**How to read it:**
+- **Clean splits** (one parent → two children) indicate that a resolution increase reveals genuine sub-populations.
+- **Many-to-many connections** (cells scattered across multiple parents) suggest unstable clustering at that resolution.
+- **Stable regions** (one-to-one edges across several resolutions) indicate robust cluster identity.
+- Nodes at the **optimal resolution** are highlighted in red.
 
 ### How to use it
 
 1. Run the main pipeline once (steps 1–4) to generate the preprocessed AnnData with PCA, Harmony, and KNN graph.
 2. Open the **🔎 Leiden Optimizer** page.
-3. Configure the sweep range (min/max resolution and step size) or use the defaults.
+3. Configure the sweep range (min/max resolution and step size) or use the defaults (0.1–2.0, step 0.1 = 20 resolutions).
 4. Click **Run Resolution Sweep** — a progress bar shows each resolution being evaluated.
-5. Review the 4-panel results chart (combined score, cluster count, silhouette, modularity) and the full results table.
-6. Click **Apply** to update the pipeline Leiden resolution, then re-run the pipeline.
+5. Review the multi-panel metric charts. Look for:
+   - **Silhouette** peak or plateau
+   - **Calinski-Harabasz** peak
+   - **Davies-Bouldin** trough
+   - **Spatial coherence** plateau before it drops off
+   - **Combined score** peak (vertical red dashed line)
+6. Check the **clustree** to confirm cluster stability around the recommended resolution.
+7. Click **Apply** to update the pipeline Leiden resolution, or manually select a different resolution from the dropdown if domain knowledge suggests a different choice.
+8. Re-run the pipeline with the new resolution.
 
-Alternatively, upload any pre-processed `.h5ad` file with a KNN graph (`obsp['connectivities']`) and a PCA embedding (`obsm['X_pca']` or `obsm['X_pca_harmony']`).
+Alternatively, upload any pre-processed `.h5ad` file with a KNN graph (`obsp['connectivities']`) and a PCA embedding (`obsm['X_pca']` or `obsm['X_pca_harmony']`). For spatial coherence, `obsm['spatial']` must also be present.
 
 ---
 
@@ -327,6 +401,7 @@ See [`requirements.txt`](requirements.txt) for the full list. Key packages:
 | anndata | 0.10 | Annotated data matrices |
 | harmonypy | 0.0.9 | Batch correction |
 | pydeseq2 | 0.4 | Pseudobulk DGE (optional; Wilcoxon is the fallback) |
+| scikit-learn | 1.3 | Cluster quality metrics (silhouette, Calinski-Harabasz, Davies-Bouldin) |
 | leidenalg | 0.10 | Graph-based clustering |
 | pyarrow | 14.0 | Parquet support (`cells.parquet`) |
 | statsmodels | 0.14 | Multiple-testing correction (BH FDR) |
