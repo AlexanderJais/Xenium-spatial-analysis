@@ -330,9 +330,10 @@ if df is not None and best_res is not None:
         )
     with col_apply:
         if st.button(
-            f"Apply resolution {best_res:.2f} to pipeline settings",
+            f"Apply recommended resolution ({best_res:.2f})",
             type="primary",
             use_container_width=True,
+            key="apply_best_resolution",
         ):
             st.session_state["leiden_resolution"] = best_res
             st.success(
@@ -351,7 +352,7 @@ if df is not None and best_res is not None:
                 f"silhouette {df.loc[df['resolution']==r, 'silhouette'].iloc[0]:.4f}"
             ),
         )
-        if st.button(f"Apply resolution {manual_pick:.2f}"):
+        if st.button("Apply selected resolution", key="apply_manual_resolution"):
             st.session_state["leiden_resolution"] = float(manual_pick)
             st.success(f"Leiden resolution updated to **{manual_pick:.2f}**.")
 
