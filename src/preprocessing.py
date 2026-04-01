@@ -761,14 +761,12 @@ def optimize_leiden_resolution(
 
     # Detect spatial coordinates for spatial coherence
     _has_spatial = "spatial" in adata.obsm
-    _spatial_tree = None
     _spatial_k = 15  # neighbours for spatial coherence
     if _has_spatial:
         from scipy.spatial import cKDTree
         xy = adata.obsm["spatial"].astype(np.float64)
-        _spatial_tree = cKDTree(xy)
         _spatial_k = min(_spatial_k, adata.n_obs - 1)
-        _, _spatial_nbr_idx = _spatial_tree.query(xy, k=_spatial_k + 1)
+        _, _spatial_nbr_idx = cKDTree(xy).query(xy, k=_spatial_k + 1)
         _spatial_nbr_idx = _spatial_nbr_idx[:, 1:]  # exclude self
         logger.info(
             "Spatial coherence enabled: k=%d spatial neighbours", _spatial_k,
@@ -910,11 +908,16 @@ def optimize_leiden_resolution(
     # Modularity [−0.5, 1]: higher is better
 
     def _norm_col(s: pd.Series, invert: bool = False) -> pd.Series:
-        """Min-max normalise to [0, 1]; if invert, flip so lower raw = higher norm."""
+        """Min-max normalise to [0, 1]; if invert, flip so lower raw = higher norm.
+
+        NaN values are filled with 0.5 (neutral) after normalisation so they
+        don't dominate or crash the combined score.
+        """
         s = s.copy()
-        s_min, s_max = s.min(), s.max()
+        s_min, s_max = s.dropna().min(), s.dropna().max()
         rng = s_max - s_min if s_max > s_min else 1.0
         normed = (s - s_min) / rng
+        normed = normed.fillna(0.5)  # neutral score for NaN entries
         return (1.0 - normed) if invert else normed
 
     sil_norm = _norm_col(df["silhouette"])

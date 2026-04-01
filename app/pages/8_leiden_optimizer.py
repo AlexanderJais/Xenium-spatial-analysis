@@ -123,6 +123,8 @@ if res_min >= res_max:
 import numpy as np
 n_steps = int(round((res_max - res_min) / res_step)) + 1
 resolutions = [round(res_min + i * res_step, 2) for i in range(n_steps)]
+# Guard against floating-point overshoot
+resolutions = [r for r in resolutions if r <= res_max + 1e-9]
 st.caption(f"Will test **{len(resolutions)}** resolutions: {resolutions[0]} – {resolutions[-1]}")
 
 c4, c5 = st.columns(2)
@@ -243,10 +245,12 @@ if df is not None and best_res is not None:
     with m4:
         st.metric("Calinski-Harabasz", f"{best_row['calinski_harabasz']:.1f}")
     with m5:
-        st.metric("Davies-Bouldin", f"{best_row['davies_bouldin']:.4f}")
+        _db = best_row['davies_bouldin']
+        st.metric("Davies-Bouldin", f"{_db:.4f}" if _db == _db else "N/A")
     if m6 is not None:
         with m6:
-            st.metric("Spatial coherence", f"{best_row['spatial_coherence']:.4f}")
+            _sc = best_row['spatial_coherence']
+            st.metric("Spatial coherence", f"{_sc:.4f}" if _sc == _sc else "N/A")
 
     st.divider()
 
@@ -421,14 +425,16 @@ if df is not None and best_res is not None:
 
     # Full table
     with st.expander("Full results table", expanded=False):
-        st.dataframe(
-            df.style.highlight_max(subset=["combined_score"], color="#D4EDDA")
-                    .highlight_max(subset=["silhouette"], color="#D4EDDA")
-                    .highlight_max(subset=["calinski_harabasz"], color="#D4EDDA")
-                    .highlight_min(subset=["davies_bouldin"], color="#D4EDDA"),
-            use_container_width=True,
-            hide_index=True,
+        styler = (
+            df.style
+            .highlight_max(subset=["combined_score"], color="#D4EDDA")
+            .highlight_max(subset=["silhouette"], color="#D4EDDA")
+            .highlight_max(subset=["calinski_harabasz"], color="#D4EDDA")
         )
+        # highlight_min on DB only if no NaN values present
+        if df["davies_bouldin"].notna().all():
+            styler = styler.highlight_min(subset=["davies_bouldin"], color="#D4EDDA")
+        st.dataframe(styler, use_container_width=True, hide_index=True)
 
     st.divider()
 
@@ -436,13 +442,14 @@ if df is not None and best_res is not None:
     st.subheader("Apply optimal resolution")
     col_apply, col_current = st.columns(2)
     with col_current:
+        _db_str = f"{best_row['davies_bouldin']:.4f}" if best_row['davies_bouldin'] == best_row['davies_bouldin'] else "N/A"
         detail_lines = (
             f"**Current setting:** {st.session_state['leiden_resolution']:.2f}\n\n"
             f"**Recommended:** {best_res:.2f} "
             f"({int(best_row['n_clusters'])} clusters, "
             f"silhouette {best_row['silhouette']:.4f}, "
             f"CH {best_row['calinski_harabasz']:.1f}, "
-            f"DB {best_row['davies_bouldin']:.4f})"
+            f"DB {_db_str})"
         )
         st.info(detail_lines)
     with col_apply:
@@ -495,17 +502,20 @@ def _build_clustree(results_df, cluster_df, best_res):
     """
     import plotly.graph_objects as go
 
-    cols = sorted(cluster_df.columns, key=lambda c: float(c.split("_")[1]))
-    if len(cols) < 2:
+    all_cols = sorted(cluster_df.columns, key=lambda c: float(c.split("_")[1]))
+    if len(all_cols) < 2:
         st.info("Need at least 2 resolutions for a clustree plot.")
         return
 
-    # Limit to avoid overly dense diagrams — keep every-other if > 12
-    if len(cols) > 12:
-        step = max(1, len(cols) // 12)
-        cols = cols[::step]
-        if cols[-1] != sorted(cluster_df.columns, key=lambda c: float(c.split("_")[1]))[-1]:
-            cols.append(sorted(cluster_df.columns, key=lambda c: float(c.split("_")[1]))[-1])
+    # Limit to avoid overly dense diagrams — subsample if > 12 levels
+    if len(all_cols) > 12:
+        step = max(1, len(all_cols) // 12)
+        cols = all_cols[::step]
+        # Always include the last resolution
+        if cols[-1] != all_cols[-1]:
+            cols.append(all_cols[-1])
+    else:
+        cols = all_cols
 
     # Build node list and edge list
     node_labels = []
