@@ -213,6 +213,16 @@ All figures follow **Nature Publishing Group** standards:
 | fig15_galanin | Galanin (Gal): spatial maps ADULT/AGED (panels a,b), split violin per cell type (c), per-cell-type log₂FC lollipop with BH-corrected significance (d) |
 | fig16_composition | Cell type composition testing: stacked proportion bars per replicate (a), forest plot of log₂FC per cell type with credible intervals and significance (b); scCODA Bayesian model (Büttner 2021) with CLR+Welch t-test fallback |
 | fig17_neuropeptide_modules | Neuropeptide co-expression modules: UMAP coloured by dominant module (a), z-scored mean score per cell type × module heatmap (b), AGED vs ADULT grouped bar with Mann-Whitney significance (c), spatial dominant-module maps per condition (d). Modules: AgRP/NPY, POMC/CART, KNDy, Somatostatin, TRH/Dopamine, Galanin. |
+| fig18_gal_coexpression | Galanin (Gal) co-expression partners |
+| fig19_gal_spatial_maps | Galanin system spatial maps: 2×3 grid of Gal / Galr1 / Galr3 per condition |
+| fig20_gal_expression_resistance | Galanin expression violins per cell type + Galanin Resistance Index (GRI = Gal / (Galr1 + Galr3 + 1)) |
+| fig21_gal_coexpression | Galanin-receptor co-expression status maps per condition (7-category classification) |
+| fig22_gal_regional | Regional breakdown of Gal / Galr1 / Galr3 expression by cell type |
+| fig23_gal_niche | Spatial niche receptor availability scores around Gal⁺ cells (k-NN) |
+| fig24_gal_proximity | Ligand-receptor nearest-neighbour distance analysis |
+| fig25_gal_resistance_summary | Composite 4-panel Galanin resistance summary |
+
+> **Gene panel requirement:** Figures 18–25 are generated only when **Gal** is present in the gene panel. Gal, Galr1, and Galr3 are **not** included in the base Xenium_mBrain_v1_1 panel and must be added via custom panels. When Gal is absent, the pipeline skips the Galanin resistance analysis (Step 10) and logs a message. Figure 15 shows a placeholder noting the gene is missing.
 """)
 
 with tab_trouble:
