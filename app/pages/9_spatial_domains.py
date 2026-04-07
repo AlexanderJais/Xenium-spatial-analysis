@@ -315,32 +315,35 @@ with tab_sweep:
         sweep_df = st.session_state["sd_sweep_results"]
         st.dataframe(sweep_df, use_container_width=True)
 
-        best = sweep_df.loc[sweep_df["combined_score"].idxmax()]
-        sil_str = f"{best['silhouette_score']:.3f}" if not np.isnan(best["silhouette_score"]) else "N/A"
-        st.success(
-            f"Best λ = **{best['lambda']:.2f}** — "
-            f"{int(best['n_domains'])} domains, "
-            f"coherence = {best['spatial_coherence']:.3f}, "
-            f"silhouette = {sil_str}"
-        )
+        if sweep_df["combined_score"].isna().all():
+            st.warning("All sweep runs produced invalid scores. Try different parameters.")
+        else:
+            best = sweep_df.loc[sweep_df["combined_score"].idxmax()]
+            sil_str = f"{best['silhouette_score']:.3f}" if not np.isnan(best["silhouette_score"]) else "N/A"
+            st.success(
+                f"Best λ = **{best['lambda']:.2f}** — "
+                f"{int(best['n_domains'])} domains, "
+                f"coherence = {best['spatial_coherence']:.3f}, "
+                f"silhouette = {sil_str}"
+            )
 
-        # Plot
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(1, 3, figsize=(10, 3))
-        axes[0].plot(sweep_df["lambda"], sweep_df["spatial_coherence"], "o-")
-        axes[0].set_xlabel("λ"); axes[0].set_ylabel("Spatial Coherence")
-        axes[1].plot(sweep_df["lambda"], sweep_df["silhouette_score"], "s-")
-        axes[1].set_xlabel("λ"); axes[1].set_ylabel("Silhouette Score")
-        axes[2].plot(sweep_df["lambda"], sweep_df["combined_score"], "D-")
-        axes[2].axvline(best["lambda"], color="red", ls="--", alpha=0.5)
-        axes[2].set_xlabel("λ"); axes[2].set_ylabel("Combined Score")
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close(fig)
+            # Plot
+            import matplotlib.pyplot as plt
+            fig, axes = plt.subplots(1, 3, figsize=(10, 3))
+            axes[0].plot(sweep_df["lambda"], sweep_df["spatial_coherence"], "o-")
+            axes[0].set_xlabel("λ"); axes[0].set_ylabel("Spatial Coherence")
+            axes[1].plot(sweep_df["lambda"], sweep_df["silhouette_score"], "s-")
+            axes[1].set_xlabel("λ"); axes[1].set_ylabel("Silhouette Score")
+            axes[2].plot(sweep_df["lambda"], sweep_df["combined_score"], "D-")
+            axes[2].axvline(best["lambda"], color="red", ls="--", alpha=0.5)
+            axes[2].set_xlabel("λ"); axes[2].set_ylabel("Combined Score")
+            fig.tight_layout()
+            st.pyplot(fig)
+            plt.close(fig)
 
-        if st.button("Apply best λ"):
-            st.session_state["sd_lambda"] = float(best["lambda"])
-            st.rerun()
+            if st.button("Apply best λ"):
+                st.session_state["sd_lambda"] = float(best["lambda"])
+                st.rerun()
 
 with tab_degs:
     st.markdown(

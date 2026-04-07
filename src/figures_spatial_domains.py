@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 def _domain_palette(n: int) -> list:
     """Distinct colour palette for spatial domains."""
+    if n == 0:
+        return []
     if n <= 8:
         return WONG[:n]
     if n <= 20:
@@ -326,6 +328,12 @@ def plot_domain_vs_leiden(
     apply_nature_style()
     if "spatial" not in adata.obsm:
         logger.warning("No spatial coordinates; skipping fig_sd5.")
+        return None
+    if cluster_key not in adata.obs.columns:
+        logger.warning("Cluster key '%s' not found; skipping fig_sd5.", cluster_key)
+        return None
+    if domain_key not in adata.obs.columns:
+        logger.warning("Domain key '%s' not found; skipping fig_sd5.", domain_key)
         return None
 
     conditions = adata.obs[condition_key].astype("category").cat.categories.tolist()

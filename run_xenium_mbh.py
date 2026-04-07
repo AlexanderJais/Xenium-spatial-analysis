@@ -1010,6 +1010,10 @@ def _apply_launcher_config(config_path: str):
     CFG.run_spatial_domains       = bool(lcfg.get("run_spatial_domains",       CFG.run_spatial_domains))
     CFG.lambda_spatial            = float(lcfg.get("lambda_spatial",           CFG.lambda_spatial))
     CFG.spatial_domain_resolution = float(lcfg.get("spatial_domain_resolution",CFG.spatial_domain_resolution))
+    if not 0.0 <= CFG.lambda_spatial <= 1.0:
+        raise ValueError(f"lambda_spatial must be in [0, 1], got {CFG.lambda_spatial}")
+    if CFG.spatial_domain_resolution <= 0:
+        raise ValueError(f"spatial_domain_resolution must be > 0, got {CFG.spatial_domain_resolution}")
 
     # Panel options from launcher
     panel_mode = lcfg.get("panel_mode", "partial_union")

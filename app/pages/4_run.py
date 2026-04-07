@@ -39,6 +39,8 @@ for k, v in {
     "n_top_genes": 0, "filter_control_probes": True,
     "filter_control_codewords": True, "normalize_by_cell_area": False, "harmony_max_iter": 30,
     "figure_format": "pdf", "dpi": 300,
+    "run_spatial_domains": False, "lambda_spatial": 0.3,
+    "spatial_domain_resolution": 0.5,
     "roi_polygons": {},
     "pipeline_running": False,
     "pipeline_log": [],

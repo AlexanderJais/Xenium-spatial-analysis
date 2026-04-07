@@ -216,7 +216,7 @@ def _row_normalize(A: sp.spmatrix) -> sp.csr_matrix:
     """Row-normalise a sparse matrix so each row sums to 1."""
     A = sp.csr_matrix(A, dtype=np.float64)
     row_sums = np.array(A.sum(axis=1)).ravel()
-    row_sums[row_sums == 0] = 1.0
+    row_sums[row_sums < 1e-12] = 1.0  # guard against zero and near-zero sums
     diag_inv = sp.diags(1.0 / row_sums)
     return diag_inv @ A
 
@@ -272,14 +272,12 @@ def run_spatial_leiden(
     A_joint = combine_graphs(adata, lambda_spatial=lambda_spatial)
 
     # Step 3: convert to igraph and run Leiden
-    # Use COO format for efficient sparse-to-igraph conversion
-    A_coo = sp.coo_matrix(A_joint)
-
-    # Keep only upper triangle (A_joint is symmetric after combine_graphs)
-    mask = A_coo.row < A_coo.col
-    sources = A_coo.row[mask]
-    targets = A_coo.col[mask]
-    weights = A_coo.data[mask]
+    # Extract upper triangle for undirected graph (sp.triu guarantees
+    # correctness regardless of internal sparse storage order)
+    A_upper = sp.triu(A_joint, k=1, format="coo")
+    sources = A_upper.row
+    targets = A_upper.col
+    weights = A_upper.data
 
     g = ig.Graph(n=adata.n_obs, edges=list(zip(sources.tolist(), targets.tolist())), directed=False)
     g.es["weight"] = weights.tolist()
@@ -739,7 +737,7 @@ def run_spatial_domain_pipeline(
     deg_df = None
     if run_degs:
         deg_df = domain_deg(adata, domain_key=domain_key)
-        adata.uns["spatial_domain_degs"] = deg_df
+        adata.uns["spatial_domain_degs_df"] = deg_df
 
     n_domains = adata.obs[domain_key].nunique()
     logger.info(
