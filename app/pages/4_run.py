@@ -39,6 +39,8 @@ for k, v in {
     "n_top_genes": 0, "filter_control_probes": True,
     "filter_control_codewords": True, "normalize_by_cell_area": False, "harmony_max_iter": 30,
     "figure_format": "pdf", "dpi": 300,
+    "run_spatial_domains": False, "lambda_spatial": 0.3,
+    "spatial_domain_resolution": 0.5,
     "roi_polygons": {},
     "pipeline_running": False,
     "pipeline_log": [],
@@ -149,6 +151,10 @@ def _build_launcher_config() -> dict:
         "figure_format"           : st.session_state["figure_format"],
         "dpi"                     : st.session_state["dpi"],
         "no_roi_gui"              : True,   # always skip Qt GUI when running via web
+        # Spatial domain detection
+        "run_spatial_domains"      : st.session_state.get("run_spatial_domains",       False),
+        "lambda_spatial"           : st.session_state.get("lambda_spatial",             0.3),
+        "spatial_domain_resolution": st.session_state.get("spatial_domain_resolution",  0.5),
     }
 
 

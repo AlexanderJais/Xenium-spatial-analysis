@@ -21,6 +21,8 @@ for k, v in {
     "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
     "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 30,
     "figure_format": "pdf", "dpi": 300,
+    "run_spatial_domains": False, "lambda_spatial": 0.3,
+    "spatial_domain_resolution": 0.5,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -326,6 +328,54 @@ with d3:
         format="%.3f",
     )
     st.session_state["pval_threshold"] = float(v)
+
+st.divider()
+
+# ── Spatial domain detection ────────────────────────────────────────────────
+st.subheader("Spatial domain detection")
+st.markdown(
+    "Spatially-aware Leiden clustering that combines expression and "
+    "spatial neighbour graphs. When enabled, tissue domains are "
+    "identified and domain-specific marker genes are computed."
+)
+sd1, sd2, sd3 = st.columns(3)
+with sd1:
+    v = st.checkbox(
+        "Enable spatial domain detection",
+        value=st.session_state.get("run_spatial_domains", False),
+        help="Run spatial domain detection after preprocessing. "
+             "Adds ~1-3 min depending on dataset size.",
+    )
+    st.session_state["run_spatial_domains"] = v
+with sd2:
+    v = st.slider(
+        "λ spatial weight",
+        0.0, 1.0,
+        float(st.session_state.get("lambda_spatial", 0.3)), 0.05,
+        help="0 = expression-only (same as Leiden), 1 = spatial-only. "
+             "Recommended: 0.2–0.5.",
+        disabled=not st.session_state["run_spatial_domains"],
+    )
+    st.session_state["lambda_spatial"] = float(v)
+with sd3:
+    v = st.slider(
+        "Domain resolution",
+        0.1, 2.0,
+        float(st.session_state.get("spatial_domain_resolution", 0.5)), 0.05,
+        help="Leiden resolution for the joint graph. Higher = more domains.",
+        disabled=not st.session_state["run_spatial_domains"],
+    )
+    st.session_state["spatial_domain_resolution"] = float(v)
+
+if st.session_state["run_spatial_domains"]:
+    try:
+        st.page_link(
+            "pages/9_spatial_domains.py",
+            label="Interactive domain explorer (lambda sweep, DEGs)",
+            icon="🗺️",
+        )
+    except AttributeError:
+        st.caption("Tip: use the **Spatial Domains** page for interactive exploration.")
 
 st.divider()
 

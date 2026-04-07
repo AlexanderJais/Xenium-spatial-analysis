@@ -38,7 +38,9 @@ from src.preprocessing import full_preprocessing_pipeline
 from src.dge_analysis import run_dge
 from src import figures as fig_module
 from src import figures_galanin_resistance as fig_gal_module
+from src import figures_spatial_domains as fig_sd_module
 from src import galanin_resistance as gal_analysis
+from src import spatial_domain_detection as sd_module
 
 # Library code should never call basicConfig() -- that is the caller's
 # responsibility.  A NullHandler prevents "No handler found" warnings when the
@@ -122,6 +124,7 @@ class XeniumDGEPipeline:
         self.cfg = cfg
         self.adata: ad.AnnData | None = None
         self.dge_results: pd.DataFrame | None = None
+        self.domain_degs: pd.DataFrame | None = None
         self._t0 = None
 
     # ------------------------------------------------------------------
@@ -143,6 +146,7 @@ class XeniumDGEPipeline:
 
         self.load_data()
         self.preprocess()
+        self.run_spatial_domains()
         self.run_dge()
         self.make_figures()
         self.save_results()
@@ -174,6 +178,44 @@ class XeniumDGEPipeline:
             self.adata = full_preprocessing_pipeline(self.adata, self.cfg)
             self.adata.write_h5ad(cache_path)
             logger.info("Preprocessed AnnData cached to %s", cache_path)
+
+        return self
+
+    def run_spatial_domains(self) -> "XeniumDGEPipeline":
+        """Step 2b: Spatial domain detection (optional)."""
+        if not self.cfg.run_spatial_domains:
+            logger.info("Spatial domain detection skipped (run_spatial_domains=False).")
+            return self
+
+        if self.adata is None:
+            self.preprocess()
+
+        logger.info(
+            "Step 2b: Spatial domain detection (lambda=%.2f, res=%.2f) …",
+            self.cfg.lambda_spatial, self.cfg.spatial_domain_resolution,
+        )
+        try:
+            self.adata, self.domain_degs = sd_module.run_spatial_domain_pipeline(
+                self.adata,
+                lambda_spatial=self.cfg.lambda_spatial,
+                resolution=self.cfg.spatial_domain_resolution,
+                n_spatial_neighbors=self.cfg.n_spatial_neighbors,
+                min_fragment_cells=self.cfg.spatial_domain_min_cells,
+                domain_key=self.cfg.spatial_domain_key,
+                run_degs=self.cfg.spatial_domain_degs,
+                random_state=self.cfg.random_state,
+            )
+
+            # Export domain DEGs
+            if self.domain_degs is not None:
+                csv_path = self.cfg.output_dir / "spatial_domain_degs.csv"
+                self.domain_degs.to_csv(csv_path, index=False)
+                logger.info("Spatial domain DEGs saved to %s", csv_path)
+        except (RuntimeError, ValueError, ArithmeticError, ImportError) as exc:
+            logger.exception(
+                "Spatial domain detection failed; continuing without domains."
+            )
+            self.domain_degs = None
 
         return self
 
@@ -315,11 +357,51 @@ class XeniumDGEPipeline:
             output_dir=out, fmt=fmt, dpi=dpi,
         )
 
+        # ── Spatial domain figures (Fig SD1-SD5) ──────────────────────────
+        self._make_spatial_domain_figures(out, fmt, dpi, ck, clk)
+
         # ── Galanin resistance analysis (Fig 19-25) ─────────────────────
         self._make_galanin_figures(out, fmt, dpi, ck)
 
         logger.info("All figures saved to %s/", out)
         return self
+
+    def _make_spatial_domain_figures(self, out, fmt, dpi, ck, clk):
+        """Generate spatial domain figures (Fig SD1-SD5) if domains were computed."""
+        sdk = self.cfg.spatial_domain_key
+        if sdk not in self.adata.obs.columns:
+            logger.info("Spatial domain figures skipped — no spatial domains computed.")
+            return
+
+        logger.info("Generating spatial domain figures (Fig SD1-SD5) …")
+        try:
+            rep = self.cfg.representative_slides
+            spot = self.cfg.spot_size
+
+            fig_sd_module.plot_spatial_domains(
+                self.adata, domain_key=sdk, condition_key=ck,
+                output_dir=out, spot_size=spot, fmt=fmt, dpi=dpi,
+                representative_slides=rep,
+            )
+            fig_sd_module.plot_domain_composition(
+                self.adata, domain_key=sdk, condition_key=ck,
+                output_dir=out, fmt=fmt, dpi=dpi,
+            )
+            if self.domain_degs is not None:
+                fig_sd_module.plot_domain_markers(
+                    self.adata, self.domain_degs, domain_key=sdk,
+                    output_dir=out, fmt=fmt, dpi=dpi,
+                )
+            fig_sd_module.plot_domain_vs_leiden(
+                self.adata, domain_key=sdk, cluster_key=clk,
+                condition_key=ck, output_dir=out, spot_size=spot,
+                fmt=fmt, dpi=dpi, representative_slides=rep,
+            )
+            logger.info("Spatial domain figures saved.")
+        except Exception:
+            logger.exception(
+                "Spatial domain figure generation failed; continuing."
+            )
 
     def _make_galanin_figures(self, out, fmt, dpi, ck):
         """Generate galanin resistance figures (Fig 19-25) if Gal is in panel."""
@@ -410,6 +492,16 @@ class XeniumDGEPipeline:
             else "N/A"
         )
 
+        # Spatial domain info (if computed)
+        sdk = self.cfg.spatial_domain_key
+        n_domains = "N/A"
+        domain_coherence = "N/A"
+        if self.adata is not None and sdk in self.adata.obs.columns:
+            n_domains = self.adata.obs[sdk].nunique()
+            domain_coherence = self.adata.uns.get("spatial_domain_coherence", "N/A")
+            if isinstance(domain_coherence, float):
+                domain_coherence = f"{domain_coherence:.3f}"
+
         summary = f"""
 ========================================================
 XENIUM DGE PIPELINE SUMMARY
@@ -418,6 +510,7 @@ Conditions     : {self.cfg.condition_a_label} vs {self.cfg.condition_b_label}
 Cells retained : {n_cells}
 Genes retained : {n_genes}
 Clusters       : {n_clusters}
+Spatial domains: {n_domains} (coherence: {domain_coherence})
 DGE method     : {self.cfg.dge_method}
 Significant    : {n_sig} genes (|log2FC| > {self.cfg.dge_log2fc_threshold}, adj-p < {self.cfg.dge_pval_threshold})
 Elapsed        : {elapsed:.0f} s

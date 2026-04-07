@@ -145,6 +145,22 @@ class PipelineConfig:
     sccoda_n_mcmc_samples: int = 20_000
 
     # ------------------------------------------------------------------
+    # Spatial domain detection
+    # ------------------------------------------------------------------
+    # Spatially-aware Leiden clustering that combines expression and
+    # spatial neighbour graphs.  lambda_spatial controls the balance:
+    #   0.0 = expression-only (equivalent to standard Leiden)
+    #   1.0 = spatial-only (ignores gene expression)
+    # Recommended range for Xenium: 0.2–0.5.
+    run_spatial_domains: bool = False          # enable spatial domain detection
+    lambda_spatial: float = 0.3               # spatial weight (0–1)
+    spatial_domain_resolution: float = 0.5    # Leiden resolution for domains
+    n_spatial_neighbors: int = 15             # KNN neighbours in tissue space
+    spatial_domain_min_cells: int = 30        # min fragment size for refinement
+    spatial_domain_key: str = "spatial_domain" # obs column for domain labels
+    spatial_domain_degs: bool = True          # compute marker genes per domain
+
+    # ------------------------------------------------------------------
     # Spatial
     # ------------------------------------------------------------------
     spot_size: float = 8.0         # dot size for spatial scatter
