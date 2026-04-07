@@ -86,6 +86,13 @@ def build_spatial_graph(
     if "spatial" not in adata.obsm:
         raise ValueError("adata.obsm['spatial'] is required for spatial graph construction.")
 
+    if adata.n_obs < 2:
+        logger.warning("Cannot build spatial graph with fewer than 2 cells.")
+        n = adata.n_obs
+        adata.obsp["spatial_connectivities"] = sp.csr_matrix((n, n))
+        adata.obsp["spatial_distances"] = sp.csr_matrix((n, n))
+        return adata
+
     k = min(n_neighbors, adata.n_obs - 1)
 
     try:
@@ -108,36 +115,33 @@ def build_spatial_graph(
 
 
 def _build_spatial_graph_fallback(adata: ad.AnnData, k: int) -> None:
-    """scipy cKDTree fallback for spatial neighbour graph."""
+    """scipy cKDTree fallback for spatial neighbour graph (vectorised)."""
     xy = adata.obsm["spatial"].astype(np.float64)
     tree = cKDTree(xy)
     distances, indices = tree.query(xy, k=k + 1)  # includes self
 
     n = adata.n_obs
-    rows, cols, dists = [], [], []
-    for i in range(n):
-        for j_idx in range(1, k + 1):  # skip self (index 0)
-            j = indices[i, j_idx]
-            rows.append(i)
-            cols.append(j)
-            dists.append(distances[i, j_idx])
+    # Vectorised construction — skip self-neighbours (column 0)
+    rows = np.repeat(np.arange(n), k)
+    cols = indices[:, 1:k + 1].ravel()
+    dists_flat = distances[:, 1:k + 1].ravel()
 
     conn = sp.csr_matrix(
         (np.ones(len(rows), dtype=np.float64), (rows, cols)),
         shape=(n, n),
     )
     dist_mat = sp.csr_matrix(
-        (np.array(dists, dtype=np.float64), (rows, cols)),
+        (dists_flat.astype(np.float64), (rows, cols)),
         shape=(n, n),
     )
-    # Symmetrise
-    conn = (conn + conn.T).astype(bool).astype(np.float64)
-    conn = sp.csr_matrix(conn)
-    dist_mat = (dist_mat + dist_mat.T) / 2
-    dist_mat.eliminate_zeros()
+    # Symmetrise connectivity (binary) and distances (take max to avoid
+    # halving one-sided distances)
+    conn = conn + conn.T
+    conn.data[:] = 1.0  # re-binarise after summation
+    dist_mat = dist_mat.maximum(dist_mat.T)
 
-    adata.obsp["spatial_connectivities"] = conn
-    adata.obsp["spatial_distances"] = dist_mat
+    adata.obsp["spatial_connectivities"] = sp.csr_matrix(conn)
+    adata.obsp["spatial_distances"] = sp.csr_matrix(dist_mat)
     logger.info("Spatial KNN graph built (k=%d, %d cells, fallback).", k, n)
 
 
@@ -179,6 +183,8 @@ def combine_graphs(
     -------
     Joint adjacency matrix (sparse CSR).
     """
+    if not 0.0 <= lambda_spatial <= 1.0:
+        raise ValueError(f"lambda_spatial must be in [0, 1], got {lambda_spatial}.")
     if expr_conn_key not in adata.obsp:
         raise ValueError(f"Expression graph '{expr_conn_key}' not found in adata.obsp.")
     if spatial_conn_key not in adata.obsp:
@@ -193,6 +199,10 @@ def combine_graphs(
 
     # Blend
     A_joint = (1.0 - lambda_spatial) * A_expr + lambda_spatial * A_spat
+
+    # Symmetrise: row-normalisation breaks symmetry (different row sums),
+    # so we average (i,j) and (j,i) to produce an undirected graph.
+    A_joint = (A_joint + A_joint.T) / 2.0
 
     logger.info(
         "Joint graph: lambda_spatial=%.2f, expression edges=%d, spatial edges=%d, "
@@ -262,13 +272,14 @@ def run_spatial_leiden(
     A_joint = combine_graphs(adata, lambda_spatial=lambda_spatial)
 
     # Step 3: convert to igraph and run Leiden
-    # Convert sparse adjacency to igraph weighted graph
-    sources, targets = A_joint.nonzero()
-    weights = np.array(A_joint[sources, targets]).ravel()
+    # Use COO format for efficient sparse-to-igraph conversion
+    A_coo = sp.coo_matrix(A_joint)
 
-    # Keep only upper triangle to avoid double-counting edges
-    mask = sources < targets
-    sources, targets, weights = sources[mask], targets[mask], weights[mask]
+    # Keep only upper triangle (A_joint is symmetric after combine_graphs)
+    mask = A_coo.row < A_coo.col
+    sources = A_coo.row[mask]
+    targets = A_coo.col[mask]
+    weights = A_coo.data[mask]
 
     g = ig.Graph(n=adata.n_obs, edges=list(zip(sources.tolist(), targets.tolist())), directed=False)
     g.es["weight"] = weights.tolist()
@@ -355,10 +366,12 @@ def refine_domains(
                 continue
             # Reassign cells in this small component to neighbour domain
             global_idx = domain_idx[comp]
+            A_spat_csr = sp.csr_matrix(A_spat)
             for ci in global_idx:
-                # Find spatial neighbours
-                nbr_row = A_spat[ci].toarray().ravel()
-                nbr_idx = np.where(nbr_row > 0)[0]
+                # Find spatial neighbours via sparse CSR indices (no densification)
+                nbr_idx = A_spat_csr[ci].indices
+                if len(nbr_idx) == 0:
+                    continue
                 nbr_labels = labels[nbr_idx]
                 # Exclude same domain
                 other = nbr_labels[nbr_labels != domain]
@@ -461,9 +474,7 @@ def domain_deg(
         col_map["group"] = "domain"
     result = result.rename(columns=col_map)
 
-    # Convert natural-log fold change to log2
-    if "log2fc" in result.columns:
-        result["log2fc"] = result["log2fc"] / np.log(2)
+    # scanpy's logfoldchanges are already in log2 scale — no conversion needed
 
     # Filter by thresholds
     mask = (result["pval_adj"] < pval_thresh) & (result["log2fc"].abs() > log2fc_thresh)
@@ -503,17 +514,27 @@ def spatial_coherence(
         raise ValueError(f"Spatial graph '{spatial_conn_key}' not found.")
 
     labels = adata.obs[domain_key].values
-    A = adata.obsp[spatial_conn_key]
+    A = sp.csr_matrix(adata.obsp[spatial_conn_key])
 
+    # Vectorised coherence: fraction of spatial neighbours sharing same label
     n = adata.n_obs
-    coherence = np.zeros(n)
-    for i in range(n):
-        row = A[i]
-        nbr_idx = row.indices if sp.issparse(row) else np.where(row > 0)[0]
-        if len(nbr_idx) == 0:
-            coherence[i] = 1.0
-            continue
-        coherence[i] = np.mean(labels[nbr_idx] == labels[i])
+    labels_int, _ = pd.factorize(labels)
+    n_labels = len(set(labels_int))
+    # One-hot encode labels: (n_cells, n_labels)
+    label_onehot = sp.csr_matrix(
+        (np.ones(n), (np.arange(n), labels_int)), shape=(n, n_labels)
+    )
+    # For each cell, count neighbours sharing same label
+    # A @ label_onehot gives (n, n_labels) with neighbour-label counts per cell
+    nbr_label_counts = A @ label_onehot
+    # Select counts for each cell's own label
+    same_label_count = np.array(
+        nbr_label_counts[np.arange(n), labels_int]
+    ).ravel()
+    # Total neighbour count per cell
+    total_nbrs = np.array(A.astype(bool).sum(axis=1)).ravel()
+    total_nbrs[total_nbrs == 0] = 1.0  # isolated cells → coherence = 0
+    coherence = same_label_count / total_nbrs
 
     mean_coh = float(coherence.mean())
     logger.info(

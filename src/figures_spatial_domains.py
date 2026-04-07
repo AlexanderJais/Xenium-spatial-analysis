@@ -22,14 +22,12 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
-import scipy.sparse as sp
-import seaborn as sns
 
 from src.figures import (
-    NATURE_RC, SINGLE, DOUBLE, WONG,
-    CONDITION_COLOURS, DIVERGING_CMAP, SEQUENTIAL_CMAP,
-    apply_nature_style, _savefig, _panel_label,
-    _safe_cluster_sort_key, _cluster_palette,
+    SINGLE, DOUBLE, WONG,
+    CONDITION_COLOURS,
+    apply_nature_style, _savefig,
+    _safe_cluster_sort_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,8 +69,8 @@ def plot_spatial_domains(
     spot_size: float = 3.0,
     fmt: str = "pdf",
     dpi: int = 300,
-    representative_slides: dict | None = None,
-) -> Path:
+    representative_slides: Optional[dict] = None,
+) -> Optional[Path]:
     """
     Spatial scatter coloured by spatial domain — one panel per slide or
     one representative per condition.
@@ -213,7 +211,7 @@ def plot_domain_markers(
     output_dir: Path = Path("figures_output"),
     fmt: str = "pdf",
     dpi: int = 300,
-) -> Path:
+) -> Optional[Path]:
     """
     Dot plot of top marker genes per spatial domain. Size = fraction
     expressing, colour = mean expression.
@@ -314,8 +312,8 @@ def plot_domain_vs_leiden(
     spot_size: float = 3.0,
     fmt: str = "pdf",
     dpi: int = 300,
-    representative_slides: dict | None = None,
-) -> Path:
+    representative_slides: Optional[dict] = None,
+) -> Optional[Path]:
     """
     Side-by-side spatial scatter: Leiden clusters vs spatial domains for
     one representative slide per condition.

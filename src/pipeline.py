@@ -183,7 +183,7 @@ class XeniumDGEPipeline:
 
     def run_spatial_domains(self) -> "XeniumDGEPipeline":
         """Step 2b: Spatial domain detection (optional)."""
-        if not getattr(self.cfg, "run_spatial_domains", False):
+        if not self.cfg.run_spatial_domains:
             logger.info("Spatial domain detection skipped (run_spatial_domains=False).")
             return self
 
@@ -194,22 +194,28 @@ class XeniumDGEPipeline:
             "Step 2b: Spatial domain detection (lambda=%.2f, res=%.2f) …",
             self.cfg.lambda_spatial, self.cfg.spatial_domain_resolution,
         )
-        self.adata, self.domain_degs = sd_module.run_spatial_domain_pipeline(
-            self.adata,
-            lambda_spatial=self.cfg.lambda_spatial,
-            resolution=self.cfg.spatial_domain_resolution,
-            n_spatial_neighbors=self.cfg.n_spatial_neighbors,
-            min_fragment_cells=self.cfg.spatial_domain_min_cells,
-            domain_key=self.cfg.spatial_domain_key,
-            run_degs=self.cfg.spatial_domain_degs,
-            random_state=self.cfg.random_state,
-        )
+        try:
+            self.adata, self.domain_degs = sd_module.run_spatial_domain_pipeline(
+                self.adata,
+                lambda_spatial=self.cfg.lambda_spatial,
+                resolution=self.cfg.spatial_domain_resolution,
+                n_spatial_neighbors=self.cfg.n_spatial_neighbors,
+                min_fragment_cells=self.cfg.spatial_domain_min_cells,
+                domain_key=self.cfg.spatial_domain_key,
+                run_degs=self.cfg.spatial_domain_degs,
+                random_state=self.cfg.random_state,
+            )
 
-        # Export domain DEGs
-        if self.domain_degs is not None:
-            csv_path = self.cfg.output_dir / "spatial_domain_degs.csv"
-            self.domain_degs.to_csv(csv_path, index=False)
-            logger.info("Spatial domain DEGs saved to %s", csv_path)
+            # Export domain DEGs
+            if self.domain_degs is not None:
+                csv_path = self.cfg.output_dir / "spatial_domain_degs.csv"
+                self.domain_degs.to_csv(csv_path, index=False)
+                logger.info("Spatial domain DEGs saved to %s", csv_path)
+        except Exception:
+            logger.exception(
+                "Spatial domain detection failed; continuing without domains."
+            )
+            self.domain_degs = None
 
         return self
 
@@ -362,7 +368,7 @@ class XeniumDGEPipeline:
 
     def _make_spatial_domain_figures(self, out, fmt, dpi, ck, clk):
         """Generate spatial domain figures (Fig SD1-SD5) if domains were computed."""
-        sdk = getattr(self.cfg, "spatial_domain_key", "spatial_domain")
+        sdk = self.cfg.spatial_domain_key
         if sdk not in self.adata.obs.columns:
             logger.info("Spatial domain figures skipped — no spatial domains computed.")
             return
@@ -481,6 +487,16 @@ class XeniumDGEPipeline:
             else "N/A"
         )
 
+        # Spatial domain info (if computed)
+        sdk = self.cfg.spatial_domain_key
+        n_domains = "N/A"
+        domain_coherence = "N/A"
+        if self.adata is not None and sdk in self.adata.obs.columns:
+            n_domains = self.adata.obs[sdk].nunique()
+            domain_coherence = self.adata.uns.get("spatial_domain_coherence", "N/A")
+            if isinstance(domain_coherence, float):
+                domain_coherence = f"{domain_coherence:.3f}"
+
         summary = f"""
 ========================================================
 XENIUM DGE PIPELINE SUMMARY
@@ -489,6 +505,7 @@ Conditions     : {self.cfg.condition_a_label} vs {self.cfg.condition_b_label}
 Cells retained : {n_cells}
 Genes retained : {n_genes}
 Clusters       : {n_clusters}
+Spatial domains: {n_domains} (coherence: {domain_coherence})
 DGE method     : {self.cfg.dge_method}
 Significant    : {n_sig} genes (|log2FC| > {self.cfg.dge_log2fc_threshold}, adj-p < {self.cfg.dge_pval_threshold})
 Elapsed        : {elapsed:.0f} s

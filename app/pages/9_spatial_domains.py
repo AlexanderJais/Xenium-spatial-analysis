@@ -61,17 +61,18 @@ st.markdown(
 st.divider()
 
 # ── Find preprocessed AnnData ───────────────────────────────────────────────
-out_dir = Path(st.session_state.get("output_dir", ""))
-_candidate_paths = [
-    out_dir / "adata_preprocessed.h5ad",
-    out_dir / "adata_final.h5ad",
-    out_dir / "adata_mbh_final.h5ad",
-]
+out_dir = Path(st.session_state.get("output_dir", "")) or None
 _found_path = None
-for _p in _candidate_paths:
-    if _p.exists():
-        _found_path = _p
-        break
+if out_dir is not None:
+    _candidate_paths = [
+        out_dir / "adata_preprocessed.h5ad",
+        out_dir / "adata_final.h5ad",
+        out_dir / "adata_mbh_final.h5ad",
+    ]
+    for _p in _candidate_paths:
+        if _p.exists():
+            _found_path = _p
+            break
 
 if _found_path is None:
     st.warning(
@@ -139,6 +140,13 @@ with c4:
 
 st.divider()
 
+# Helper for consistent domain sorting
+def _sort_key(x):
+    try:
+        return (0, int(x))
+    except (ValueError, TypeError):
+        return (1, str(x))
+
 # ── Run detection ───────────────────────────────────────────────────────────
 tab_detect, tab_sweep, tab_degs = st.tabs([
     "Run Detection", "Lambda Sweep", "Domain DEGs"
@@ -159,86 +167,92 @@ with tab_detect:
             adata = ad.read_h5ad(_found_path)
 
         # Validate prerequisites
+        _prereq_ok = True
         if "connectivities" not in adata.obsp:
             st.error("Missing expression KNN graph (obsp['connectivities']). Run preprocessing first.")
-            st.stop()
+            _prereq_ok = False
         if "spatial" not in adata.obsm:
             st.error("Missing spatial coordinates (obsm['spatial']). Load Xenium data with coordinates.")
-            st.stop()
+            _prereq_ok = False
 
-        with st.spinner(f"Detecting spatial domains (λ={lam:.2f}, res={res:.2f})..."):
-            adata, deg_df = run_spatial_domain_pipeline(
-                adata,
-                lambda_spatial=lam,
-                resolution=res,
-                n_spatial_neighbors=k_spatial,
-                min_fragment_cells=min_cells,
-                domain_key="spatial_domain",
-                run_degs=True,
-                random_state=42,
-            )
+        if _prereq_ok:
+            with st.spinner(f"Detecting spatial domains (λ={lam:.2f}, res={res:.2f})..."):
+                adata, deg_df = run_spatial_domain_pipeline(
+                    adata,
+                    lambda_spatial=lam,
+                    resolution=res,
+                    n_spatial_neighbors=k_spatial,
+                    min_fragment_cells=min_cells,
+                    domain_key="spatial_domain",
+                    run_degs=True,
+                    random_state=42,
+                )
 
-        n_domains = adata.obs["spatial_domain"].nunique()
-        coherence = adata.uns.get("spatial_domain_coherence", 0)
+            n_domains = adata.obs["spatial_domain"].nunique()
+            coherence = adata.uns.get("spatial_domain_coherence", 0)
 
-        st.success(f"Detected **{n_domains} spatial domains** (coherence = {coherence:.3f})")
+            st.success(f"Detected **{n_domains} spatial domains** (coherence = {coherence:.3f})")
 
-        # Save updated AnnData
-        save_path = out_dir / "adata_spatial_domains.h5ad"
-        if out_dir.exists():
-            adata.write_h5ad(save_path)
-            st.info(f"Saved to `{save_path}`")
+            # Save updated AnnData and DEGs
+            if out_dir is not None and out_dir.exists():
+                save_path = out_dir / "adata_spatial_domains.h5ad"
+                adata.write_h5ad(save_path)
+                st.info(f"Saved to `{save_path}`")
 
-        # --- Visualisation ---
-        st.subheader("Spatial Domain Map")
-        import matplotlib.pyplot as plt
-        from src.figures_spatial_domains import get_domain_colours
+                if deg_df is not None:
+                    deg_path = out_dir / "spatial_domain_degs.csv"
+                    deg_df.to_csv(deg_path, index=False)
 
-        domain_colours = get_domain_colours(adata, "spatial_domain")
-        domains = sorted(domain_colours.keys())
+            # --- Visualisation ---
+            st.subheader("Spatial Domain Map")
+            import matplotlib.pyplot as plt
+            from src.figures_spatial_domains import get_domain_colours
 
-        # Pick a representative slide or use all cells
-        slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
-        if slide_col:
-            slides = adata.obs[slide_col].unique().tolist()
-        else:
-            slides = ["all"]
+            domain_colours = get_domain_colours(adata, "spatial_domain")
+            domains = sorted(domain_colours.keys(), key=_sort_key)
 
-        cols = st.columns(min(4, len(slides)))
-        for idx, slide in enumerate(slides):
-            with cols[idx % len(cols)]:
-                if slide_col:
-                    mask = adata.obs[slide_col] == slide
-                else:
-                    mask = np.ones(adata.n_obs, dtype=bool)
-                sub = adata[mask]
-                xy = sub.obsm["spatial"]
+            # Pick a representative slide or use all cells
+            slide_col = "slide_id" if "slide_id" in adata.obs.columns else None
+            if slide_col:
+                slides = adata.obs[slide_col].unique().tolist()
+            else:
+                slides = ["all"]
 
-                fig, ax = plt.subplots(figsize=(4, 4))
-                for dom in domains:
-                    dm = sub.obs["spatial_domain"].values == dom
-                    if dm.sum() == 0:
-                        continue
-                    ax.scatter(
-                        xy[dm, 0], xy[dm, 1],
-                        c=domain_colours[dom], s=1, alpha=0.6,
-                        edgecolors="none", rasterized=True,
-                    )
-                ax.set_title(str(slide), fontsize=8)
-                ax.set_aspect("equal")
-                ax.invert_yaxis()
-                ax.axis("off")
-                st.pyplot(fig)
-                plt.close(fig)
+            cols = st.columns(min(4, len(slides)))
+            for idx, slide in enumerate(slides):
+                with cols[idx % len(cols)]:
+                    if slide_col:
+                        mask = adata.obs[slide_col] == slide
+                    else:
+                        mask = np.ones(adata.n_obs, dtype=bool)
+                    sub = adata[mask]
+                    xy = sub.obsm["spatial"]
 
-        # Domain composition
-        st.subheader("Domain Composition")
-        comp = adata.obs["spatial_domain"].value_counts().sort_index()
-        st.bar_chart(comp)
+                    fig, ax = plt.subplots(figsize=(4, 4))
+                    for dom in domains:
+                        dm = sub.obs["spatial_domain"].values == dom
+                        if dm.sum() == 0:
+                            continue
+                        ax.scatter(
+                            xy[dm, 0], xy[dm, 1],
+                            c=domain_colours[dom], s=1, alpha=0.6,
+                            edgecolors="none", rasterized=True,
+                        )
+                    ax.set_title(str(slide), fontsize=8)
+                    ax.set_aspect("equal")
+                    ax.invert_yaxis()
+                    ax.axis("off")
+                    st.pyplot(fig)
+                    plt.close(fig)
 
-        # Store DEGs for the DEG tab
-        if deg_df is not None:
-            st.session_state["sd_deg_df"] = deg_df
+            # Domain composition
+            st.subheader("Domain Composition")
+            comp = adata.obs["spatial_domain"].value_counts().sort_index()
+            st.bar_chart(comp)
+
+            # Store DEGs for the DEG tab
+            if deg_df is not None:
+                st.session_state["sd_deg_df"] = deg_df
 
 with tab_sweep:
     st.markdown(
@@ -272,25 +286,25 @@ with tab_sweep:
             sweep_lambdas = [float(x.strip()) for x in sweep_lambdas_str.split(",")]
         except ValueError:
             st.error("Invalid lambda values. Use comma-separated numbers.")
-            st.stop()
+            sweep_lambdas = None
 
-        with st.spinner("Loading AnnData..."):
-            adata = ad.read_h5ad(_found_path)
+        if sweep_lambdas is not None:
+            with st.spinner("Loading AnnData..."):
+                adata = ad.read_h5ad(_found_path)
 
-        if "connectivities" not in adata.obsp or "spatial" not in adata.obsm:
-            st.error("AnnData missing expression graph or spatial coordinates.")
-            st.stop()
+            if "connectivities" not in adata.obsp or "spatial" not in adata.obsm:
+                st.error("AnnData missing expression graph or spatial coordinates.")
+            else:
+                with st.spinner(f"Sweeping {len(sweep_lambdas)} lambda values..."):
+                    sweep_df = sweep_lambda(
+                        adata,
+                        lambdas=sweep_lambdas,
+                        resolution=sweep_res,
+                        n_spatial_neighbors=k_spatial,
+                        random_state=42,
+                    )
 
-        with st.spinner(f"Sweeping {len(sweep_lambdas)} lambda values..."):
-            sweep_df = sweep_lambda(
-                adata,
-                lambdas=sweep_lambdas,
-                resolution=sweep_res,
-                n_spatial_neighbors=k_spatial,
-                random_state=42,
-            )
-
-        st.session_state["sd_sweep_results"] = sweep_df
+                st.session_state["sd_sweep_results"] = sweep_df
 
     # Display results
     if st.session_state["sd_sweep_results"] is not None:
@@ -298,11 +312,12 @@ with tab_sweep:
         st.dataframe(sweep_df, use_container_width=True)
 
         best = sweep_df.loc[sweep_df["combined_score"].idxmax()]
+        sil_str = f"{best['silhouette_score']:.3f}" if not np.isnan(best["silhouette_score"]) else "N/A"
         st.success(
             f"Best λ = **{best['lambda']:.2f}** — "
             f"{int(best['n_domains'])} domains, "
             f"coherence = {best['spatial_coherence']:.3f}, "
-            f"silhouette = {best['silhouette_score']:.3f}"
+            f"silhouette = {sil_str}"
         )
 
         # Plot
@@ -321,7 +336,7 @@ with tab_sweep:
 
         if st.button("Apply best λ"):
             st.session_state["sd_lambda"] = float(best["lambda"])
-            st.success(f"λ set to {best['lambda']:.2f}. Go to 'Run Detection' tab to apply.")
+            st.rerun()
 
 with tab_degs:
     st.markdown(
@@ -331,7 +346,7 @@ with tab_degs:
     )
 
     deg_df = st.session_state.get("sd_deg_df", None)
-    if deg_df is None:
+    if deg_df is None and out_dir is not None:
         # Try loading from disk
         deg_path = out_dir / "spatial_domain_degs.csv"
         if deg_path.exists():
@@ -341,37 +356,38 @@ with tab_degs:
 
     if deg_df is None:
         st.info("Run spatial domain detection first to generate domain DEGs.")
-        st.stop()
+    elif "domain" not in deg_df.columns or "log2fc" not in deg_df.columns or "pval_adj" not in deg_df.columns:
+        st.error("DEG table missing expected columns (domain, log2fc, pval_adj).")
+    else:
+        # Filter controls
+        c_d1, c_d2, c_d3 = st.columns(3)
+        with c_d1:
+            domain_filter = st.selectbox(
+                "Domain",
+                ["All"] + sorted(deg_df["domain"].unique().tolist(), key=_sort_key),
+            )
+        with c_d2:
+            lfc_min = st.slider("Min |log2FC|", 0.0, 5.0, 0.5, 0.1)
+        with c_d3:
+            pval_max = st.slider("Max adj. p-value", 0.001, 0.1, 0.05, 0.001, format="%.3f")
 
-    # Filter controls
-    c_d1, c_d2, c_d3 = st.columns(3)
-    with c_d1:
-        domain_filter = st.selectbox(
-            "Domain",
-            ["All"] + sorted(deg_df["domain"].unique().tolist()),
+        filtered = deg_df.copy()
+        if domain_filter != "All":
+            filtered = filtered[filtered["domain"] == domain_filter]
+        filtered = filtered[
+            (filtered["log2fc"].abs() > lfc_min) & (filtered["pval_adj"] < pval_max)
+        ]
+
+        st.metric("Significant genes", len(filtered))
+        st.dataframe(
+            filtered.sort_values("log2fc", ascending=False).head(200),
+            use_container_width=True,
         )
-    with c_d2:
-        lfc_min = st.slider("Min |log2FC|", 0.0, 5.0, 0.5, 0.1)
-    with c_d3:
-        pval_max = st.slider("Max adj. p-value", 0.001, 0.1, 0.05, 0.001, format="%.3f")
 
-    filtered = deg_df.copy()
-    if domain_filter != "All":
-        filtered = filtered[filtered["domain"] == domain_filter]
-    filtered = filtered[
-        (filtered["log2fc"].abs() > lfc_min) & (filtered["pval_adj"] < pval_max)
-    ]
-
-    st.metric("Significant genes", len(filtered))
-    st.dataframe(
-        filtered.sort_values("log2fc", ascending=False).head(200),
-        use_container_width=True,
-    )
-
-    # Download button
-    csv = filtered.to_csv(index=False)
-    st.download_button(
-        "Download filtered DEGs (CSV)",
-        csv, "spatial_domain_degs_filtered.csv",
-        mime="text/csv",
-    )
+        # Download button
+        csv = filtered.to_csv(index=False)
+        st.download_button(
+            "Download filtered DEGs (CSV)",
+            csv, "spatial_domain_degs_filtered.csv",
+            mime="text/csv",
+        )
