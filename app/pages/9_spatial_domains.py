@@ -61,7 +61,8 @@ st.markdown(
 st.divider()
 
 # ── Find preprocessed AnnData ───────────────────────────────────────────────
-out_dir = Path(st.session_state.get("output_dir", "")) or None
+_raw_dir = st.session_state.get("output_dir", "")
+out_dir = Path(_raw_dir) if _raw_dir else None
 _found_path = None
 if out_dir is not None:
     _candidate_paths = [
@@ -160,6 +161,9 @@ with tab_detect:
     )
 
     if run_clicked:
+        # Clear stale results from previous runs
+        st.session_state.pop("sd_deg_df", None)
+
         import anndata as ad
         from src.spatial_domain_detection import run_spatial_domain_pipeline
 

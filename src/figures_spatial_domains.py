@@ -28,6 +28,7 @@ from src.figures import (
     CONDITION_COLOURS,
     apply_nature_style, _savefig,
     _safe_cluster_sort_key,
+    get_cluster_colours,
 )
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,7 @@ def plot_domain_composition(
     output_dir: Path = Path("figures_output"),
     fmt: str = "pdf",
     dpi: int = 300,
-) -> Path:
+) -> Optional[Path]:
     """Stacked bar chart of cell counts per domain, split by condition."""
     apply_nature_style()
 
@@ -265,9 +266,13 @@ def plot_lambda_sweep(
     output_dir: Path = Path("figures_output"),
     fmt: str = "pdf",
     dpi: int = 300,
-) -> Path:
+) -> Optional[Path]:
     """Line plots of spatial coherence, silhouette, and combined score vs lambda."""
     apply_nature_style()
+
+    if sweep_df.empty or sweep_df["combined_score"].isna().all():
+        logger.warning("No valid sweep results; skipping fig_sd4.")
+        return None
 
     fig, axes = plt.subplots(1, 3, figsize=(DOUBLE, 2.2))
 
@@ -341,7 +346,6 @@ def plot_domain_vs_leiden(
     fig, axes = plt.subplots(n_cond, 2, figsize=(DOUBLE, 2.5 * n_cond), squeeze=False)
 
     domain_colours = get_domain_colours(adata, domain_key)
-    from src.figures import get_cluster_colours
     cluster_colours = get_cluster_colours(adata, cluster_key)
 
     for row, cond in enumerate(conditions):

@@ -346,6 +346,7 @@ def refine_domains(
 
     labels = adata.obs[key].values.copy().astype(str)
     A_spat = adata.obsp[spatial_conn_key]
+    A_spat_csr = sp.csr_matrix(A_spat)
 
     n_reassigned = 0
     for domain in np.unique(labels):
@@ -355,10 +356,11 @@ def refine_domains(
         if len(domain_idx) < 2:
             continue
 
-        # Subgraph for this domain
-        sub_A = A_spat[domain_mask][:, domain_mask]
-        sources, targets = sub_A.nonzero()
-        g = ig.Graph(n=len(domain_idx), edges=list(zip(sources.tolist(), targets.tolist())), directed=False)
+        # Subgraph for this domain — use upper triangle to avoid multigraph
+        sub_A = sp.coo_matrix(A_spat_csr[domain_mask][:, domain_mask])
+        mask_ut = sub_A.row < sub_A.col
+        edges = list(zip(sub_A.row[mask_ut].tolist(), sub_A.col[mask_ut].tolist()))
+        g = ig.Graph(n=len(domain_idx), edges=edges, directed=False)
         components = g.connected_components()
 
         for comp in components:
@@ -366,7 +368,6 @@ def refine_domains(
                 continue
             # Reassign cells in this small component to neighbour domain
             global_idx = domain_idx[comp]
-            A_spat_csr = sp.csr_matrix(A_spat)
             for ci in global_idx:
                 # Find spatial neighbours via sparse CSR indices (no densification)
                 nbr_idx = A_spat_csr[ci].indices
@@ -432,7 +433,8 @@ def domain_deg(
 
     Returns
     -------
-    Long-format DataFrame: domain, gene, log2fc, pval_adj, pct_in, pct_out.
+    Full unfiltered long-format DataFrame: domain, gene, log2fc, pval_adj.
+    Threshold parameters are used only for the log summary count.
     """
     import scanpy as sc
 
@@ -443,8 +445,22 @@ def domain_deg(
     use_raw = False
     layer = "lognorm" if "lognorm" in adata.layers else None
 
-    # Determine which groups to test
-    groups = "all" if target_domain is None else [target_domain]
+    # Skip domains with too few cells for statistical testing
+    domain_counts = adata.obs[domain_key].value_counts()
+    valid_domains = domain_counts[domain_counts >= 3].index.tolist()
+    if not valid_domains:
+        logger.warning("No domains have >= 3 cells; skipping DEG analysis.")
+        return pd.DataFrame(columns=["domain", "gene", "log2fc", "pval_adj"])
+
+    if target_domain is not None:
+        if target_domain not in valid_domains:
+            logger.warning(
+                "Domain '%s' has < 3 cells; skipping DEG analysis.", target_domain
+            )
+            return pd.DataFrame(columns=["domain", "gene", "log2fc", "pval_adj"])
+        groups = [target_domain]
+    else:
+        groups = valid_domains
 
     sc.tl.rank_genes_groups(
         adata,
@@ -514,7 +530,9 @@ def spatial_coherence(
         raise ValueError(f"Spatial graph '{spatial_conn_key}' not found.")
 
     labels = adata.obs[domain_key].values
-    A = sp.csr_matrix(adata.obsp[spatial_conn_key])
+    # Binarise to ensure coherence is an unweighted fraction regardless of
+    # whether the spatial graph carries edge weights.
+    A = sp.csr_matrix(adata.obsp[spatial_conn_key]).astype(bool).astype(np.float64)
 
     # Vectorised coherence: fraction of spatial neighbours sharing same label
     n = adata.n_obs
@@ -532,7 +550,7 @@ def spatial_coherence(
         nbr_label_counts[np.arange(n), labels_int]
     ).ravel()
     # Total neighbour count per cell
-    total_nbrs = np.array(A.astype(bool).sum(axis=1)).ravel()
+    total_nbrs = np.array(A.sum(axis=1)).ravel()
     total_nbrs[total_nbrs == 0] = 1.0  # isolated cells → coherence = 0
     coherence = same_label_count / total_nbrs
 
