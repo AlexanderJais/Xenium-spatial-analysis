@@ -149,6 +149,10 @@ def _build_launcher_config() -> dict:
         "figure_format"           : st.session_state["figure_format"],
         "dpi"                     : st.session_state["dpi"],
         "no_roi_gui"              : True,   # always skip Qt GUI when running via web
+        # Spatial domain detection
+        "run_spatial_domains"      : st.session_state.get("run_spatial_domains",       False),
+        "lambda_spatial"           : st.session_state.get("lambda_spatial",             0.3),
+        "spatial_domain_resolution": st.session_state.get("spatial_domain_resolution",  0.5),
     }
 
 

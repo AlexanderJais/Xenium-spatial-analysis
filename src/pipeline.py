@@ -211,7 +211,7 @@ class XeniumDGEPipeline:
                 csv_path = self.cfg.output_dir / "spatial_domain_degs.csv"
                 self.domain_degs.to_csv(csv_path, index=False)
                 logger.info("Spatial domain DEGs saved to %s", csv_path)
-        except Exception:
+        except (RuntimeError, ValueError, ArithmeticError, ImportError) as exc:
             logger.exception(
                 "Spatial domain detection failed; continuing without domains."
             )
@@ -374,29 +374,34 @@ class XeniumDGEPipeline:
             return
 
         logger.info("Generating spatial domain figures (Fig SD1-SD5) …")
-        rep = self.cfg.representative_slides
-        spot = self.cfg.spot_size
+        try:
+            rep = self.cfg.representative_slides
+            spot = self.cfg.spot_size
 
-        fig_sd_module.plot_spatial_domains(
-            self.adata, domain_key=sdk, condition_key=ck,
-            output_dir=out, spot_size=spot, fmt=fmt, dpi=dpi,
-            representative_slides=rep,
-        )
-        fig_sd_module.plot_domain_composition(
-            self.adata, domain_key=sdk, condition_key=ck,
-            output_dir=out, fmt=fmt, dpi=dpi,
-        )
-        if self.domain_degs is not None:
-            fig_sd_module.plot_domain_markers(
-                self.adata, self.domain_degs, domain_key=sdk,
+            fig_sd_module.plot_spatial_domains(
+                self.adata, domain_key=sdk, condition_key=ck,
+                output_dir=out, spot_size=spot, fmt=fmt, dpi=dpi,
+                representative_slides=rep,
+            )
+            fig_sd_module.plot_domain_composition(
+                self.adata, domain_key=sdk, condition_key=ck,
                 output_dir=out, fmt=fmt, dpi=dpi,
             )
-        fig_sd_module.plot_domain_vs_leiden(
-            self.adata, domain_key=sdk, cluster_key=clk,
-            condition_key=ck, output_dir=out, spot_size=spot,
-            fmt=fmt, dpi=dpi, representative_slides=rep,
-        )
-        logger.info("Spatial domain figures saved.")
+            if self.domain_degs is not None:
+                fig_sd_module.plot_domain_markers(
+                    self.adata, self.domain_degs, domain_key=sdk,
+                    output_dir=out, fmt=fmt, dpi=dpi,
+                )
+            fig_sd_module.plot_domain_vs_leiden(
+                self.adata, domain_key=sdk, cluster_key=clk,
+                condition_key=ck, output_dir=out, spot_size=spot,
+                fmt=fmt, dpi=dpi, representative_slides=rep,
+            )
+            logger.info("Spatial domain figures saved.")
+        except Exception:
+            logger.exception(
+                "Spatial domain figure generation failed; continuing."
+            )
 
     def _make_galanin_figures(self, out, fmt, dpi, ck):
         """Generate galanin resistance figures (Fig 19-25) if Gal is in panel."""
