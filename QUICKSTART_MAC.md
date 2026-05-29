@@ -152,11 +152,15 @@ Saved ROIs are reused automatically on every subsequent run.
 **Web app (📊 Results):**
 - Up to 25 figures displayed inline with dropdown selector and thumbnail gallery (figures 18--25 require Gal in the gene panel)
 - Download buttons for each figure
-- Tabs for: Global DGE table, Cluster DGE table, Moran's I, Panel validation, AnnData `.h5ad`
+- Tabs for: Global DGE table, Cluster DGE table, Moran's I, Galanin resistance, Panel validation, AnnData `.h5ad`, Run log
 
 **Gene Explorer (🔬):**
 - Generate on-demand spatial expression maps for any gene
 - Reads from the preprocessed AnnData cache -- no pipeline rerun needed
+
+**Optional advanced pages:**
+- **🔎 Leiden Optimizer** -- sweep clustering resolutions and apply the best one to your settings.
+- **🗺️ Spatial Domains** -- spatially-aware clustering that blends expression with physical coordinates (tune `lambda_spatial`). See the [README](README.md#spatial-domain-detection).
 
 ### Output files
 
@@ -164,11 +168,13 @@ All files are saved to your output directory:
 
 | File | Description |
 |------|-------------|
-| `fig1_qc.pdf` ... `fig17_neuropeptide_modules.pdf` | 17 publication-ready figures (Nature PG standards, editable PDF) |
+| `fig1_qc.pdf` ... `fig25_gal_resistance_summary.pdf` | Up to 25 publication-ready figures (Nature PG standards, editable PDF) |
+| `fig_sd1` ... `fig_sd5` | Spatial domain figures (only if `run_spatial_domains` is enabled) |
 | `global_dge_aged_vs_adult.csv` | Full DGE results |
 | `cluster_dge_results.csv` | Per-cluster DGE |
 | `cluster_dge_summary.csv` | DEG counts per cluster |
 | `morans_i_mbh.csv` | Spatially variable genes |
+| `spatial_domain_degs.csv` | Per-domain marker genes (if `run_spatial_domains`) |
 | `panel_validation.csv` | Per-slide panel composition |
 | `adata_mbh_final.h5ad` | Final annotated AnnData |
 

@@ -14,6 +14,7 @@ Runs entirely on your Mac. No data leaves your machine.
 - [Installation](#installation)
 - [Web interface](#web-interface)
 - [Leiden Resolution Optimizer](#leiden-resolution-optimizer)
+- [Spatial domain detection](#spatial-domain-detection)
 - [Panel structure](#panel-structure)
 - [DGE methods](#dge-methods)
 - [Outputs](#outputs)
@@ -84,6 +85,7 @@ Or double-click `start_app.command` in Finder. Your browser opens at http://loca
 | **🔬 Gene Explorer** | On-demand spatial expression map for any gene across all MBH slides. No pipeline rerun needed — reads from the preprocessed AnnData cache. |
 | **ℹ️ Help** | Full inline documentation: setup guide, panel structure, ROI drawing instructions, parameter reference, figure descriptions, troubleshooting. |
 | **🔎 Leiden Optimizer** | Automated resolution sweep with silhouette + modularity scoring. One-click apply to pipeline settings. |
+| **🗺️ Spatial Domains** | Spatially-aware clustering that integrates expression and physical coordinates. Interactive `lambda_spatial` sweep, domain maps, and per-domain marker genes. |
 
 ---
 
@@ -110,6 +112,27 @@ Both metrics are normalised to [0,1] and combined into a single score to recomme
 6. Click **Apply** to update the pipeline Leiden resolution, then re-run the pipeline.
 
 Alternatively, upload any pre-processed `.h5ad` file with a KNN graph (`obsp['connectivities']`) and a PCA embedding (`obsm['X_pca']` or `obsm['X_pca_harmony']`).
+
+---
+
+## Spatial domain detection
+
+Standard Leiden clustering groups cells by expression alone and ignores where they physically sit in the tissue. **Spatial domain detection** instead identifies coherent tissue regions by combining expression similarity *and* physical proximity, so neighbouring cells of similar identity are grouped into contiguous domains.
+
+### How it works
+
+1. Build a **spatial neighbour graph** from cell centroids (Delaunay or KNN in physical space, via squidpy with a local fallback).
+2. Reuse the **expression neighbour graph** from PCA/Harmony already computed during preprocessing.
+3. Blend the two into a **joint adjacency matrix** weighted by `lambda_spatial` (0 = expression-only, 1 = spatial-only; default `0.3`).
+4. Run Leiden clustering on the joint graph to define domains, then drop small disconnected fragments (`spatial_domain_min_cells`).
+5. Identify per-domain marker genes by differential expression against neighbouring domains.
+
+The approach handles irregular cell positions natively, scales to 100K+ cells via sparse graphs, and produces labels (`adata.obs['spatial_domain']`) compatible with all downstream analyses. It is inspired by the BANKSY concept (Singhal et al., 2024) and built on squidpy (Palla et al., 2022).
+
+### How to use it
+
+- **Web interface (page 9, 🗺️ Spatial Domains):** load a preprocessed `.h5ad`, sweep `lambda_spatial` interactively, preview domain maps, and apply the chosen settings to the pipeline.
+- **Full pipeline:** enable `run_spatial_domains` (off by default). When enabled, the pipeline writes `spatial_domain_degs.csv` and figures `fig_sd1`–`fig_sd3`, `fig_sd5` (see [Outputs](#outputs)). Tune via `lambda_spatial`, `spatial_domain_resolution`, and `spatial_domain_min_cells` in Settings or the config JSON.
 
 ---
 
@@ -186,6 +209,15 @@ All figures follow **Nature Publishing Group** standards: column widths 89/183 m
 | fig24_gal_proximity | Ligand-receptor nearest-neighbour distance analysis |
 | fig25_gal_resistance_summary | Composite 4-panel Galanin resistance summary |
 
+**Spatial domain figures** (only when `run_spatial_domains` is enabled):
+
+| Figure | Content |
+|--------|---------|
+| fig_sd1_spatial_domains | Spatial domain map — domains overlaid on tissue coordinates |
+| fig_sd2_domain_composition | Cell counts per domain |
+| fig_sd3_domain_markers | Dot plot of top spatially variable marker genes per domain |
+| fig_sd5_domain_vs_leiden | Spatial domains vs. Leiden clusters, side by side |
+
 > **Note:** Figures 18--25 require **Gal** (and ideally **Galr1**, **Galr3**) in the gene panel. These genes are **not** in the base `Xenium_mBrain_v1_1` panel (~247 genes) and must be added via per-slide custom panels. When Gal is absent, the pipeline skips the Galanin resistance analysis and generates placeholder figures where applicable.
 
 ### Data files
@@ -196,6 +228,7 @@ All figures follow **Nature Publishing Group** standards: column widths 89/183 m
 | `cluster_dge_results.csv` | Per-cluster DGE results |
 | `cluster_dge_summary.csv` | DEG counts per cluster |
 | `morans_i_mbh.csv` | Spatially variable genes (Moran's I) |
+| `spatial_domain_degs.csv` | Per-domain marker genes (requires `run_spatial_domains`) |
 | `panel_validation.csv` | Per-slide gene panel composition and validation |
 | `gal_coexpression_proportions.csv` | Galanin-receptor co-expression rates per condition (requires Gal in panel) |
 | `gal_regional_expression.csv` | Per-region mean Galanin system expression + resistance index (requires Gal in panel) |
@@ -235,7 +268,11 @@ The web app and launcher can save/load a JSON configuration file so you never ne
   "filter_control_codewords": true,
   "normalize_by_cell_area": false,
   "figure_format": "pdf",
-  "dpi": 300
+  "dpi": 300,
+  "run_spatial_domains": false,
+  "lambda_spatial": 0.3,
+  "spatial_domain_resolution": 0.5,
+  "spatial_domain_min_cells": 30
 }
 ```
 
@@ -264,10 +301,12 @@ xenium_dge/
 │       ├── 5_results.py         Figure viewer + data downloads
 │       ├── 6_gene_explorer.py   On-demand spatial expression maps
 │       ├── 7_help.py            Inline documentation
-│       └── 8_leiden_optimizer.py  Automated Leiden resolution sweep
+│       ├── 8_leiden_optimizer.py  Automated Leiden resolution sweep
+│       └── 9_spatial_domains.py   Spatially-aware domain detection
 │
 ├── run_xenium_mbh.py            End-to-end pipeline script
 │                                (single production entry point used by app, launcher, CLI)
+├── run_galanin_resistance.py    Standalone Galanin resistance figures from a saved .h5ad
 ├── plot_gene.py                 CLI spatial expression map for any gene
 ├── xenium_analysis.ipynb        Interactive Jupyter notebook
 ├── requirements.txt             Python dependencies
@@ -287,10 +326,12 @@ xenium_dge/
     ├── cluster_dge.py           Per-cluster / per-cell-type DGE
     ├── composition_analysis.py  Cell type composition testing (scCODA + CLR fallback)
     ├── spatial_stats.py         Moran's I, co-expression, neighbourhood enrichment
+    ├── spatial_domain_detection.py  Spatially-aware domain detection (expression + coordinates)
     ├── pipeline.py              Two-condition pipeline orchestrator
     ├── figures.py               Nature-grade figures 1--8
     ├── figures_extended.py      Nature-grade figures 9--11, 14--18
     ├── figures_panel.py         Nature-grade figures 12--13 (slide/panel QC)
+    ├── figures_spatial_domains.py  Spatial domain figures (Fig SD1--SD5)
     ├── galanin_resistance.py    Galanin resistance index computation and co-expression analysis
     └── figures_galanin_resistance.py  Nature-grade figures 19--25 (Galanin resistance)
 ```
@@ -385,5 +426,7 @@ If you use this pipeline, please cite the underlying methods:
 | Leiden | Traag et al., *Scientific Reports* 2019 |
 | scCODA | Buttner et al., *Nature Communications* 2021 |
 | C-SIDE | Cable et al., *Nature Methods* 2022 |
+| Squidpy (spatial graphs) | Palla et al., *Nature Methods* 2022 |
+| BANKSY (spatial domains) | Singhal et al., *Nature Genetics* 2024 |
 | Colour palette | Wong, *Nature Methods* 2011 |
 | Xenium | 10x Genomics Xenium In Situ platform |
