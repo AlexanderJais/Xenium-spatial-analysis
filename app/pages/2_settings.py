@@ -7,25 +7,15 @@ import streamlit as st
 
 import sys as _sys; _sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent))
 from ui_utils import inject_css, page_header
+from defaults import ensure_defaults
 
 st.set_page_config(page_title="Settings · Xenium DGE", page_icon="⚙️", layout="wide",
     initial_sidebar_state="expanded")
 
 
 inject_css()
-# ── Defaults ─────────────────────────────────────────────────────────────────
-for k, v in {
-    "panel_mode": "partial_union", "min_slides": 2,
-    "dge_method": "stringent_wilcoxon", "leiden_resolution": 0.6,
-    "n_neighbors": 12, "min_counts": 10, "max_counts": 2000,
-    "min_genes": 10, "max_genes": 300, "log2fc_threshold": 1.0,
-    "pval_threshold": 0.01, "n_top_genes": 0, "harmony_max_iter": 30,
-    "figure_format": "pdf", "dpi": 300,
-    "run_spatial_domains": False, "lambda_spatial": 0.3,
-    "spatial_domain_resolution": 0.5,
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# ── Shared session-state defaults (single source of truth: defaults.py) ──────
+ensure_defaults(st.session_state)
 
 page_header("⚙️ Pipeline Settings", "Adjust QC thresholds, integration, DGE, and figure parameters")
 st.markdown("All parameters are saved in your session and passed to the pipeline on run.")

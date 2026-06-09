@@ -26,6 +26,7 @@ The pipeline saves:
 """
 
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -47,6 +48,30 @@ from src import spatial_domain_detection as sd_module
 # library is used without any logging configuration.
 logging.getLogger("XeniumDGEPipeline").addHandler(logging.NullHandler())
 logger = logging.getLogger("XeniumDGEPipeline")
+
+
+def _atomic_write_h5ad(adata, path: Path) -> None:
+    """Write ``adata`` to ``path`` atomically.
+
+    The data is first written to a temporary file in the same directory, then
+    renamed into place with ``os.replace`` (atomic on POSIX and Windows). If the
+    process is interrupted mid-write, ``path`` is left either absent or holding
+    the previous complete file -- never a half-written .h5ad that a later run
+    would silently load as a valid cache.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        adata.write_h5ad(tmp)
+        os.replace(tmp, path)
+    finally:
+        # Reached with tmp still present only if write_h5ad/replace raised.
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def setup_log_file(output_dir: Path, log_name: str = "pipeline_run.log") -> Path:
@@ -169,14 +194,28 @@ class XeniumDGEPipeline:
         logger.info("Step 2/4: Preprocessing …")
 
         cache_path = self.cfg.cache_dir / "adata_preprocessed.h5ad"
+        cached = None
         if cache_path.exists():
             logger.info("Loading cached preprocessed AnnData from %s", cache_path)
-            self.adata = ad.read_h5ad(cache_path)
+            try:
+                cached = ad.read_h5ad(cache_path)
+            except Exception as exc:  # corrupt/truncated cache from an interrupted run
+                logger.warning(
+                    "Cached AnnData at %s is unreadable (%s) -- discarding it and "
+                    "recomputing preprocessing from scratch.", cache_path, exc,
+                )
+                try:
+                    cache_path.unlink()
+                except OSError:
+                    pass
+
+        if cached is not None:
+            self.adata = cached
         else:
             if self.adata is None:
                 self.load_data()
             self.adata = full_preprocessing_pipeline(self.adata, self.cfg)
-            self.adata.write_h5ad(cache_path)
+            _atomic_write_h5ad(self.adata, cache_path)
             logger.info("Preprocessed AnnData cached to %s", cache_path)
 
         return self
@@ -463,7 +502,7 @@ class XeniumDGEPipeline:
         """Write the final AnnData to disk."""
         out_h5ad = self.cfg.output_dir / "adata_final.h5ad"
         if self.adata is not None:
-            self.adata.write_h5ad(out_h5ad)
+            _atomic_write_h5ad(self.adata, out_h5ad)
             logger.info("Final AnnData saved to %s", out_h5ad)
         return self
 

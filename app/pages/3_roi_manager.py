@@ -32,6 +32,7 @@ import streamlit as st
 
 import sys as _sys; _sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent))
 from ui_utils import inject_css, page_header
+from defaults import ensure_defaults
 
 st.set_page_config(page_title="ROI Manager · Xenium DGE", page_icon="🗺️", layout="wide",
     initial_sidebar_state="expanded")
@@ -42,15 +43,11 @@ _ROOT = Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-# ── Session state ─────────────────────────────────────────────────────────────
-for k, v in {
-    "slides"       : [],
-    "roi_polygons" : {},
-    "roi_cache_dir": str(Path(__file__).parent.parent / "roi_cache"),
-    "roi_last_slide": None,
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# ── Shared session-state defaults (single source of truth: defaults.py) ──────
+ensure_defaults(st.session_state)
+# Page-local state
+if "roi_last_slide" not in st.session_state:
+    st.session_state["roi_last_slide"] = None
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

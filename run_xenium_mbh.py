@@ -68,7 +68,7 @@ from src.cell_type_annotation import annotate_cell_types, assign_labels_from_mar
 from src.dge_analysis import run_dge
 from src.cluster_dge import run_cluster_dge
 from src.spatial_stats import morans_i_scan, neighborhood_enrichment
-from src.pipeline import XeniumDGEPipeline
+from src.pipeline import XeniumDGEPipeline, _atomic_write_h5ad
 from src import figures as fig_module
 from src import figures_extended as fe
 from src import figures_panel as fp
@@ -239,18 +239,28 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     h5_cache = CACHE_DIR / "adata_mbh_raw.h5ad"
     loader   = None   # kept for Fig 13; None when loading from cache
 
-    # Validate cache: a 0-cell AnnData means the ROIs were wrong when the
-    # cache was written.  Delete it so the pipeline re-runs the full load.
+    # Validate cache: an unreadable file means a previous run was interrupted
+    # mid-write; a 0-cell AnnData means the ROIs were wrong when the cache was
+    # written.  Either way, delete it so the pipeline re-runs the full load.
     if h5_cache.exists():
         import anndata as ad
-        _tmp = ad.read_h5ad(h5_cache)
-        if _tmp.n_obs == 0:
+        try:
+            _tmp = ad.read_h5ad(h5_cache)
+        except Exception as exc:
             logger.warning(
-                "Cached AnnData at %s has 0 cells — cache was written with "
-                "invalid ROIs. Deleting cache and re-running the full load.",
-                h5_cache,
+                "Cached AnnData at %s is unreadable (%s) — likely a truncated "
+                "file from an interrupted run. Deleting cache and re-running "
+                "the full load.", h5_cache, exc,
             )
-            h5_cache.unlink()
+            h5_cache.unlink(missing_ok=True)
+        else:
+            if _tmp.n_obs == 0:
+                logger.warning(
+                    "Cached AnnData at %s has 0 cells — cache was written with "
+                    "invalid ROIs. Deleting cache and re-running the full load.",
+                    h5_cache,
+                )
+                h5_cache.unlink()
 
     if h5_cache.exists():
         import anndata as ad
@@ -296,7 +306,7 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
             )
         adata.uns["roi_applied"] = True
 
-        adata.write_h5ad(h5_cache)
+        _atomic_write_h5ad(adata, h5_cache)
         logger.info("Raw MBH AnnData cached to %s", h5_cache)
 
     logger.info("MBH AnnData: %d cells x %d genes", adata.n_obs, adata.n_vars)
@@ -318,18 +328,27 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     # Validate and optionally invalidate the preprocessed cache
     if pre_cache.exists():
         import anndata as ad
-        _tmp2 = ad.read_h5ad(pre_cache)
-        if _tmp2.n_obs == 0:
-            logger.warning("Preprocessed cache has 0 cells — deleting and reprocessing.")
-            pre_cache.unlink()
+        try:
+            _tmp2 = ad.read_h5ad(pre_cache)
+        except Exception as exc:
+            logger.warning(
+                "Preprocessed cache at %s is unreadable (%s) — likely a "
+                "truncated file from an interrupted run. Deleting and "
+                "reprocessing.", pre_cache, exc,
+            )
+            pre_cache.unlink(missing_ok=True)
         else:
-            logger.info("Loading cached preprocessed AnnData from %s", pre_cache)
-            adata = _tmp2
+            if _tmp2.n_obs == 0:
+                logger.warning("Preprocessed cache has 0 cells — deleting and reprocessing.")
+                pre_cache.unlink()
+            else:
+                logger.info("Loading cached preprocessed AnnData from %s", pre_cache)
+                adata = _tmp2
 
     # Run full preprocessing if no valid cache exists
     if not pre_cache.exists():
         adata = full_preprocessing_pipeline(adata, CFG)
-        adata.write_h5ad(pre_cache)
+        _atomic_write_h5ad(adata, pre_cache)
         logger.info("Preprocessed AnnData cached to %s", pre_cache)
 
     # ------------------------------------------------------------------
@@ -797,7 +816,7 @@ def main(redraw_roi: bool = False, no_roi_gui: bool = False, panel_mode: str = "
     # ------------------------------------------------------------------
     # Save final AnnData
     # ------------------------------------------------------------------
-    adata.write_h5ad(OUTPUT_DIR / "adata_mbh_final.h5ad")
+    _atomic_write_h5ad(adata, OUTPUT_DIR / "adata_mbh_final.h5ad")
 
     elapsed = time.time() - t0
     logger.info("=" * 65)

@@ -11,6 +11,7 @@ from pathlib import Path
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).parent))
 from ui_utils import inject_css, page_header
+from defaults import ensure_defaults
 
 # ── Page config (must be first Streamlit call) ──────────────────────────────
 st.set_page_config(
@@ -23,47 +24,8 @@ st.set_page_config(
 # ── Global CSS (single source of truth — styles.css) ─────────────────────────
 inject_css()
 
-# ── Shared session-state defaults ───────────────────────────────────────────
-DEFAULTS = {
-    "slides": [
-        {"slide_id": f"AGED_{i}",  "condition": "AGED",  "run_dir": ""}
-        for i in range(1, 5)
-    ] + [
-        {"slide_id": f"ADULT_{i}", "condition": "ADULT", "run_dir": ""}
-        for i in range(1, 5)
-    ],
-    "base_panel_csv"      : str(Path(__file__).parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
-    "output_dir"          : str(Path.home() / "xenium_dge_output"),
-    "roi_cache_dir"       : str(Path(__file__).parent / "roi_cache"),
-    "panel_mode"          : "partial_union",
-    "min_slides"          : 2,
-    "dge_method"          : "stringent_wilcoxon",
-    "leiden_resolution"   : 0.6,
-    "n_neighbors"         : 12,
-    "min_counts"          : 10,
-    "max_counts"          : 2000,
-    "min_genes"           : 10,
-    "max_genes"           : 300,
-    "log2fc_threshold"    : 1.0,
-    "pval_threshold"      : 0.01,
-    "n_top_genes"         : 0,
-    "filter_control_probes"   : True,
-    "filter_control_codewords": True,
-    "normalize_by_cell_area"  : False,
-    "harmony_max_iter"    : 30,
-    "roi_mode"            : "polygon",
-    "figure_format"       : "pdf",
-    "dpi"                 : 300,
-    "pipeline_running"    : False,
-    "pipeline_log"        : [],
-    "pipeline_returncode" : None,
-    "pipeline_proc"       : None,
-    "pipeline_log_queue"  : None,
-    "roi_polygons"        : {},
-}
-for k, v in DEFAULTS.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# ── Shared session-state defaults (single source of truth: defaults.py) ──────
+ensure_defaults(st.session_state)
 
 
 # ── Derived state helpers ────────────────────────────────────────────────────
