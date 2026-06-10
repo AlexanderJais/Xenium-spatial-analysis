@@ -1,23 +1,21 @@
 """
-pages/3_roi_manager.py
-ROI Manager — define the MBH region for each slide.
+pages/2_roi_manager.py
+ROI Manager — frame the MBH region for each slide.
 
-Design rationale
-----------------
-All Plotly selection-event approaches (lasso, box, drawclosedpath, on_select)
-are unreliable across Streamlit/Plotly versions. Instead we use:
+Approach
+--------
+Plotly selection events (lasso / box / on_select) are unreliable across
+Streamlit/Plotly versions, so we use FOUR SLIDERS — one per edge of the
+bounding rectangle (x_min, x_max, y_min, y_max).  Slider ranges come from
+each slide's actual tissue bounds, so every value is a valid coordinate.
 
-  FOUR SLIDERS — one per edge of the bounding rectangle (x_min, x_max, y_min, y_max).
+A dashed orange ellipse is overlaid as an anatomical atlas hint for the
+mediobasal hypothalamus (ventral-central in a coronal section).  Moving a
+slider updates the rectangle overlay and the live cell count.
 
-The sliders are computed from the ACTUAL tissue bounds of each slide, so every
-value is guaranteed to be a valid coordinate. Moving a slider instantly updates:
-  - the rectangle overlay on the scatter
-  - the cell count inside the rectangle
-
-The user can see exactly what they are selecting before saving.
-No coordinate guessing, no typing, no version dependencies.
-
-For non-rectangular regions a "Paste coordinates" fallback is provided.
+ROIs are saved to ``roi_cache/<slide>_roi.json`` (the same format the
+loader reads via ``src.roi_selector.ROISelector``) and reused automatically.
+A "Paste coordinates" fallback handles non-rectangular regions.
 """
 
 import json
@@ -33,9 +31,8 @@ import streamlit as st
 import sys as _sys; _sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent))
 from ui_utils import inject_css, page_header
 
-st.set_page_config(page_title="ROI Manager · Xenium DGE", page_icon="🗺️", layout="wide",
+st.set_page_config(page_title="ROI Manager · Xenium Sample PCA", page_icon="🗺️", layout="wide",
     initial_sidebar_state="expanded")
-
 
 inject_css()
 _ROOT = Path(__file__).parent.parent.parent
@@ -44,13 +41,14 @@ if str(_ROOT) not in sys.path:
 
 # ── Session state ─────────────────────────────────────────────────────────────
 for k, v in {
-    "slides"       : [],
-    "roi_polygons" : {},
-    "roi_cache_dir": str(Path(__file__).parent.parent / "roi_cache"),
+    "slides"        : [],
+    "roi_polygons"  : {},
+    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
     "roi_last_slide": None,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -172,7 +170,6 @@ def _import_rois(json_str: str) -> tuple[int, str]:
             verts = entry.get("vertices") or entry
             if not isinstance(verts, list) or len(verts) < 3:
                 continue
-            # Validate each vertex is a pair of finite numbers
             import math
             valid = True
             for v in verts:
@@ -195,8 +192,9 @@ _load_all_saved_rois()
 # ── Page ──────────────────────────────────────────────────────────────────────
 page_header("🗺️ ROI Manager", "Define the mediobasal hypothalamus boundary for each slide")
 st.markdown(
-    "Define the **mediobasal hypothalamus (MBH)** boundary for each slide. "
-    "Use the sliders to frame the region — the scatter and cell count update live."
+    "Use the sliders to frame the **mediobasal hypothalamus (MBH)** on each section. "
+    "The scatter and cell count update live; the dashed orange ellipse is an "
+    "atlas hint for where the MBH usually sits (ventral-central)."
 )
 
 slides = st.session_state.get("slides", [])
@@ -207,7 +205,6 @@ if not slides:
 slide_ids = [s["slide_id"] for s in slides]
 n_saved   = sum(1 for sid in slide_ids if sid in st.session_state["roi_polygons"])
 
-# ── Status ────────────────────────────────────────────────────────────────────
 if n_saved == len(slide_ids):
     st.success(f"✅ All {n_saved} ROIs saved and ready")
 else:
@@ -257,9 +254,7 @@ selected_id = st.selectbox(
 )
 selected_slide = next((s for s in slides if s["slide_id"] == selected_id), None)
 
-# Reset slider state when slide changes
 if st.session_state["roi_last_slide"] != selected_id:
-    # Clear any cached slider positions for the new slide
     for k in [f"sl_x0_{selected_id}", f"sl_x1_{selected_id}",
               f"sl_y0_{selected_id}", f"sl_y1_{selected_id}"]:
         st.session_state.pop(k, None)
@@ -273,9 +268,11 @@ if selected_slide and selected_slide.get("run_dir"):
 # ── Layout ────────────────────────────────────────────────────────────────────
 chart_col, ctrl_col = st.columns([3, 1])
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CONTROL COLUMN — sliders first so values exist before chart renders
-# ══════════════════════════════════════════════════════════════════════════════
+# Defaults for variables consumed by the chart column.
+x0 = x1 = y0 = y1 = 0
+n_preview = 0
+ellipse = None
+
 with ctrl_col:
     cond = selected_slide["condition"] if selected_slide else "—"
     st.markdown(f"**{selected_id}** — `{cond}`")
@@ -290,50 +287,43 @@ with ctrl_col:
         tw  = tx1 - tx0
         th  = ty1 - ty0
 
-        # Default ROI: horizontal centre, ventral 55-80% (where MBH sits)
-        # in a coronal mouse brain section
+        # Atlas-hint ellipse: ventral-central (≈67% down, centred in x).
+        ecx, ecy = tx0 + tw * 0.50, ty0 + th * 0.67
+        ehw, ehh = tw * 0.13, th * 0.11
+        ellipse = (ecx - ehw, ecx + ehw, ecy - ehh, ecy + ehh)
+
+        # Default ROI: horizontal centre, ventral 55-80% (where MBH sits).
         def_x0 = round(tx0 + tw * 0.35)
         def_x1 = round(tx0 + tw * 0.65)
-        def_y0 = round(ty0 + th * 0.55)   # 55% down from dorsal = ventral area
-        def_y1 = round(ty0 + th * 0.80)   # 80% down
+        def_y0 = round(ty0 + th * 0.55)
+        def_y1 = round(ty0 + th * 0.80)
 
         st.divider()
         st.markdown("**Rectangle ROI**")
-        st.caption(
-            "Slide the edges to frame the MBH. "
-            "The scatter and cell count update instantly."
-        )
+        st.caption("Slide the edges to frame the MBH. The scatter and cell count update instantly.")
 
-        # Use step = 1% of tissue size for smooth dragging
         step = max(1.0, round(min(tw, th) / 100))
 
-        x0 = st.slider("Left edge (x min)",
-                        min_value=int(tx0), max_value=int(tx1),
-                        value=int(st.session_state.get(f"sl_x0_{selected_id}", def_x0)),
-                        step=int(step), key=f"sl_x0_{selected_id}")
-        x1 = st.slider("Right edge (x max)",
-                        min_value=int(tx0), max_value=int(tx1),
-                        value=int(st.session_state.get(f"sl_x1_{selected_id}", def_x1)),
-                        step=int(step), key=f"sl_x1_{selected_id}")
-        y0 = st.slider("Top edge (y min — dorsal)",
-                        min_value=int(ty0), max_value=int(ty1),
-                        value=int(st.session_state.get(f"sl_y0_{selected_id}", def_y0)),
-                        step=int(step), key=f"sl_y0_{selected_id}")
-        y1 = st.slider("Bottom edge (y max — ventral)",
-                        min_value=int(ty0), max_value=int(ty1),
-                        value=int(st.session_state.get(f"sl_y1_{selected_id}", def_y1)),
-                        step=int(step), key=f"sl_y1_{selected_id}")
+        x0 = st.slider("Left edge (x min)", min_value=int(tx0), max_value=int(tx1),
+                       value=int(st.session_state.get(f"sl_x0_{selected_id}", def_x0)),
+                       step=int(step), key=f"sl_x0_{selected_id}")
+        x1 = st.slider("Right edge (x max)", min_value=int(tx0), max_value=int(tx1),
+                       value=int(st.session_state.get(f"sl_x1_{selected_id}", def_x1)),
+                       step=int(step), key=f"sl_x1_{selected_id}")
+        y0 = st.slider("Top edge (y min — dorsal)", min_value=int(ty0), max_value=int(ty1),
+                       value=int(st.session_state.get(f"sl_y0_{selected_id}", def_y0)),
+                       step=int(step), key=f"sl_y0_{selected_id}")
+        y1 = st.slider("Bottom edge (y max — ventral)", min_value=int(ty0), max_value=int(ty1),
+                       value=int(st.session_state.get(f"sl_y1_{selected_id}", def_y1)),
+                       step=int(step), key=f"sl_y1_{selected_id}")
 
-        # Clamp so x0 < x1, y0 < y1
         if x0 >= x1:
             x1 = min(x0 + int(step), int(tx1))
         if y0 >= y1:
             y1 = min(y0 + int(step), int(ty1))
 
-        # Live cell count
         n_preview = _count_in_rect(cells_df, x0, x1, y0, y1)
         pct = 100 * n_preview / max(len(cells_df), 1)
-
         if n_preview == 0:
             st.error("0 cells in this region — adjust the sliders.")
         elif pct > 60:
@@ -343,15 +333,11 @@ with ctrl_col:
 
         st.divider()
 
-        # Save / status
         saved_verts = st.session_state["roi_polygons"].get(selected_id)
-
         can_save = n_preview > 0 and x0 < x1 and y0 < y1
         if st.button("✅ Save ROI", type="primary", use_container_width=True,
                      disabled=not can_save, key=f"save_{selected_id}"):
-            verts = _rect_to_verts(x0, x1, y0, y1)
-            _save_roi(selected_id, verts, n_preview)
-            # Store count in session state so 4_run.py can embed it in the JSON
+            _save_roi(selected_id, _rect_to_verts(x0, x1, y0, y1), n_preview)
             st.session_state[f"n_cells_{selected_id}"] = n_preview
             st.session_state["roi_just_saved"] = selected_id
             st.rerun()
@@ -370,31 +356,23 @@ with ctrl_col:
                 st.info(f"Saved: **{n_saved_c:,}** cells ({pct_s:.1f}%)")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("🗑 Delete", use_container_width=True,
-                              key=f"del_{selected_id}"):
+                if st.button("🗑 Delete", use_container_width=True, key=f"del_{selected_id}"):
                     _delete_roi(selected_id)
                     st.rerun()
             with c2:
                 if st.button("📐 Load into sliders", use_container_width=True,
-                              key=f"load_{selected_id}",
-                              help="Restore saved ROI values into the sliders for editing"):
+                             key=f"load_{selected_id}",
+                             help="Restore saved ROI values into the sliders for editing"):
                     sv = np.array(saved_verts)
                     xs, ys = sv[:, 0], sv[:, 1]
-                    # Sliders only represent axis-aligned rectangles. Warn if the
-                    # saved ROI is a non-rectangular polygon — loading would silently
-                    # replace it with a larger bounding box, selecting extra cells.
-                    is_rect = (
-                        len(saved_verts) == 4
-                        and len(set(xs.round(1))) == 2
-                        and len(set(ys.round(1))) == 2
-                    )
+                    is_rect = (len(saved_verts) == 4
+                               and len(set(xs.round(1))) == 2
+                               and len(set(ys.round(1))) == 2)
                     if not is_rect:
                         st.warning(
-                            f"This ROI has {len(saved_verts)} vertices and is not a "
-                            "rectangle. Loading it into the sliders will use its "
-                            "**bounding box**, which is larger and will include cells "
-                            "outside the original boundary. Use the Plotly polygon "
-                            "tool to redraw if you need a non-rectangular ROI."
+                            f"This ROI has {len(saved_verts)} vertices and is not a rectangle. "
+                            "Loading it into the sliders will use its bounding box, which is "
+                            "larger and will include extra cells."
                         )
                     else:
                         st.session_state[f"sl_x0_{selected_id}"] = int(xs.min())
@@ -403,17 +381,13 @@ with ctrl_col:
                         st.session_state[f"sl_y1_{selected_id}"] = int(ys.max())
                         st.rerun()
 
-        # Copy to other slides
         if saved_verts and _count_in_polygon(cells_df, saved_verts) > 0 and len(slides) > 1:
             st.divider()
             with st.expander("📋 Copy to other slides"):
-                st.caption(
-                    "Sections at the same stereotaxic level will have "
-                    "similar MBH coordinates. Copy and verify the count."
-                )
+                st.caption("Sections at the same stereotaxic level have similar MBH coordinates. "
+                           "Copy and verify the count.")
                 targets = [s["slide_id"] for s in slides if s["slide_id"] != selected_id]
-                sel_targets = st.multiselect("Copy to", targets,
-                                              key=f"copy_targets_{selected_id}")
+                sel_targets = st.multiselect("Copy to", targets, key=f"copy_targets_{selected_id}")
                 if st.button("Copy", key=f"do_copy_{selected_id}") and sel_targets:
                     for t in sel_targets:
                         t_slide = next((s for s in slides if s["slide_id"] == t), None)
@@ -423,7 +397,6 @@ with ctrl_col:
                     st.success(f"Copied to: {', '.join(sel_targets)}")
                     st.rerun()
 
-        # Paste fallback
         with st.expander("📋 Paste coordinates (advanced)"):
             st.caption("One x,y pair per line in µm:")
             paste = st.text_area("Vertices", height=90,
@@ -433,8 +406,7 @@ with ctrl_col:
                 try:
                     lines = [l.strip() for l in paste.strip().splitlines() if l.strip()]
                     verts = [[float(v.strip()) for v in l.replace(";", ",").split(",")
-                              if v.strip()][:2]
-                             for l in lines]
+                              if v.strip()][:2] for l in lines]
                     if any(len(v) != 2 for v in verts):
                         raise ValueError("Each line must contain exactly 2 values (x, y).")
                     if len(verts) >= 3:
@@ -455,9 +427,7 @@ with ctrl_col:
     else:
         st.info("Set the run directory in **📁 Study Setup** first.")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CHART COLUMN
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Chart ─────────────────────────────────────────────────────────────────────
 with chart_col:
     if cells_df is None:
         if load_err:
@@ -471,97 +441,71 @@ with chart_col:
 
         saved_verts = st.session_state["roi_polygons"].get(selected_id)
 
-        # Colour cells: inside current slider rectangle = highlighted, outside = dim
         inside_mask = (
             (df_plot["centroid_x"] >= x0) & (df_plot["centroid_x"] <= x1) &
             (df_plot["centroid_y"] >= y0) & (df_plot["centroid_y"] <= y1)
         )
-        colors = np.where(inside_mask, "#F5A623", "#2A5298")
-        alphas = np.where(inside_mask, 0.7, 0.15)
 
         fig = go.Figure()
-
-        # Cells outside ROI (dim)
         out_mask = ~inside_mask
         if out_mask.any():
             fig.add_trace(go.Scatter(
-                x=df_plot.loc[out_mask, "centroid_x"],
-                y=df_plot.loc[out_mask, "centroid_y"],
-                mode="markers",
-                marker=dict(size=1.5, color="#2A5298", opacity=0.12),
-                name="Outside",
-                hoverinfo="skip",
-                showlegend=False,
+                x=df_plot.loc[out_mask, "centroid_x"], y=df_plot.loc[out_mask, "centroid_y"],
+                mode="markers", marker=dict(size=1.5, color="#2A5298", opacity=0.12),
+                name="Outside", hoverinfo="skip", showlegend=False,
             ))
-
-        # Cells inside current slider ROI (bright)
         if inside_mask.any():
             fig.add_trace(go.Scatter(
-                x=df_plot.loc[inside_mask, "centroid_x"],
-                y=df_plot.loc[inside_mask, "centroid_y"],
-                mode="markers",
-                marker=dict(size=2.5, color="#F5A623", opacity=0.7),
+                x=df_plot.loc[inside_mask, "centroid_x"], y=df_plot.loc[inside_mask, "centroid_y"],
+                mode="markers", marker=dict(size=2.5, color="#F5A623", opacity=0.7),
                 name=f"In ROI ({n_preview:,})",
                 hovertemplate="x: %{x:.0f} µm<br>y: %{y:.0f} µm<extra></extra>",
             ))
 
-        # Current slider rectangle outline
-        fig.add_shape(
-            type="rect",
-            x0=x0, x1=x1, y0=y0, y1=y1,
-            line=dict(color="#F5A623", width=2.5),
-            fillcolor="rgba(245,166,35,0.05)",
-        )
+        # Current slider rectangle
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+                      line=dict(color="#F5A623", width=2.5),
+                      fillcolor="rgba(245,166,35,0.05)")
 
-        # Saved ROI polygon (green overlay)
+        # Atlas-hint ellipse (dashed orange)
+        if ellipse is not None:
+            ex0, ex1, ey0, ey1 = ellipse
+            fig.add_shape(type="circle", x0=ex0, x1=ex1, y0=ey0, y1=ey1,
+                          line=dict(color="#FF8800", width=1.6, dash="dash"),
+                          fillcolor="rgba(0,0,0,0)")
+            fig.add_annotation(x=(ex0 + ex1) / 2, y=ey1,
+                               text="MBH atlas hint", showarrow=False,
+                               font=dict(color="#FF8800", size=11),
+                               yshift=-10, bgcolor="rgba(255,255,255,0.6)")
+
+        # Saved ROI polygon (green)
         if saved_verts and len(saved_verts) >= 3:
             sv = np.array(saved_verts)
             n_sv = _count_in_polygon(cells_df, saved_verts)
             fig.add_trace(go.Scatter(
-                x=list(sv[:,0]) + [sv[0,0]],
-                y=list(sv[:,1]) + [sv[0,1]],
-                mode="lines",
-                line=dict(color="#009E73", width=3),
-                fill="toself",
-                fillcolor="rgba(0,158,115,0.08)",
-                name=f"Saved ROI ({n_sv:,} cells)",
-                hoverinfo="skip",
+                x=list(sv[:,0]) + [sv[0,0]], y=list(sv[:,1]) + [sv[0,1]],
+                mode="lines", line=dict(color="#009E73", width=3),
+                fill="toself", fillcolor="rgba(0,158,115,0.08)",
+                name=f"Saved ROI ({n_sv:,} cells)", hoverinfo="skip",
             ))
 
         fig.update_layout(
-            height=600,
-            margin=dict(l=10, r=10, t=10, b=10),
-            xaxis=dict(
-                title="x (µm)", scaleanchor="y",
-                showgrid=False, zeroline=False,
-            ),
-            yaxis=dict(
-                title="y (µm)", autorange="reversed",
-                showgrid=False, zeroline=False,
-            ),
-            plot_bgcolor="#111111",
-            paper_bgcolor="rgba(0,0,0,0)",
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.01,
-                xanchor="left", x=0, font=dict(size=11),
-                bgcolor="rgba(255,255,255,0.85)",
-            ),
+            height=600, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(title="x (µm)", scaleanchor="y", showgrid=False, zeroline=False),
+            yaxis=dict(title="y (µm)", autorange="reversed", showgrid=False, zeroline=False),
+            plot_bgcolor="#111111", paper_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0,
+                        font=dict(size=11), bgcolor="rgba(255,255,255,0.85)"),
             dragmode="zoom",
         )
-
         st.plotly_chart(fig, use_container_width=True,
                         config={"scrollZoom": True, "displaylogo": False})
 
-        tx0_d = cells_df["centroid_x"].min()
-        tx1_d = cells_df["centroid_x"].max()
-        ty0_d = cells_df["centroid_y"].min()
-        ty1_d = cells_df["centroid_y"].max()
         st.caption(
-            f"Tissue bounds: x = {tx0_d:.0f}–{tx1_d:.0f} µm, "
-            f"y = {ty0_d:.0f}–{ty1_d:.0f} µm  |  "
-            f"Orange = current slider selection  |  "
-            f"Y axis: 0 = dorsal surface, larger = ventral  |  "
-            f"MBH is typically in the ventral 50–80% of the section"
+            f"Tissue bounds: x = {cells_df['centroid_x'].min():.0f}–{cells_df['centroid_x'].max():.0f} µm, "
+            f"y = {cells_df['centroid_y'].min():.0f}–{cells_df['centroid_y'].max():.0f} µm  |  "
+            f"Orange rectangle = current selection · dashed ellipse = atlas hint · green = saved ROI  |  "
+            f"Y axis: 0 = dorsal, larger = ventral"
         )
 
 # ── Summary table ──────────────────────────────────────────────────────────────
@@ -581,9 +525,7 @@ for s in slides:
         else (f"✅ {n_inside:,} cells" if n_inside else ("✅ saved" if verts else "⬜ missing"))
     )
     rows.append({
-        "Slide"       : sid,
-        "Condition"   : s["condition"],
-        "ROI"         : roi_str,
+        "Slide": sid, "Condition": s["condition"], "ROI": roi_str,
         "Cells in ROI": f"{n_inside:,}" if n_inside else "—",
     })
 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)

@@ -1,0 +1,201 @@
+"""
+pages/3_sample_pca.py
+Sample PCA — pseudobulk PCA across the 8 samples.
+
+Loads the configured Xenium slides, applies the saved MBH ROIs, collapses
+each slide into a pseudobulk profile, and runs PCA across the samples.
+Shows how individual samples cluster and how the AGED / ADULT groups
+separate, with a Nature-style figure that can be downloaded as PDF.
+"""
+
+import sys
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+import sys as _sys; _sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent.parent))
+from ui_utils import inject_css, page_header
+
+st.set_page_config(page_title="Sample PCA · Xenium Sample PCA", page_icon="📊", layout="wide",
+    initial_sidebar_state="expanded")
+
+inject_css()
+_ROOT = Path(__file__).parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+# ── Session state ─────────────────────────────────────────────────────────────
+for k, v in {
+    "slides"        : [],
+    "roi_polygons"  : {},
+    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
+    "base_panel_csv": str(Path(__file__).parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
+    "output_dir"    : str(Path.home() / "xenium_sample_pca_output"),
+    "panel_mode"    : "partial_union",
+    "min_slides"    : 2,
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _valid_dir(p: str) -> bool:
+    return bool(p) and (Path(p) / "cell_feature_matrix" / "matrix.mtx.gz").exists()
+
+
+def _roi_signature(slide_ids, roi_dir) -> tuple:
+    """Signature that changes when any ROI file changes — invalidates the cache."""
+    sig = []
+    for sid in slide_ids:
+        p = Path(roi_dir) / f"{sid.replace('/', '_').replace(' ', '_')}_roi.json"
+        sig.append((sid, p.stat().st_mtime if p.exists() else 0.0))
+    return tuple(sig)
+
+
+@st.cache_resource(show_spinner=False)
+def _load_combined(run_dirs, slide_ids, conditions, base_csv,
+                   roi_dir, use_roi, panel_mode, min_slides, _roi_sig):
+    """Load + harmonise + ROI-filter + concatenate all slides (cached)."""
+    from src.multislide_loader import SlideManifest, MultiSlideLoader
+    from src.panel_registry import PanelRegistry
+    from src.roi_selector import ROISelector
+
+    manifest = SlideManifest()
+    for sid, cond, d in zip(slide_ids, conditions, run_dirs):
+        manifest.add(slide_id=sid, condition=cond, run_dir=d, replicate_id=sid)
+
+    registry = PanelRegistry(base_csv)
+    roi_selector = ROISelector(cache_dir=roi_dir) if use_roi else None
+
+    loader = MultiSlideLoader(
+        manifest=manifest, panel_registry=registry, roi_selector=roi_selector,
+        panel_mode=panel_mode, min_slides=min_slides, apply_roi=use_roi,
+    )
+    return loader.load_all()
+
+
+# ── Page ──────────────────────────────────────────────────────────────────────
+page_header("📊 Sample PCA", "Pseudobulk PCA across the samples — group separation & outliers")
+
+slides = st.session_state.get("slides", [])
+valid_slides = [s for s in slides if _valid_dir(s.get("run_dir", ""))]
+slide_ids = [s["slide_id"] for s in valid_slides]
+n_roi = sum(1 for sid in slide_ids if sid in st.session_state["roi_polygons"]
+            or (Path(st.session_state["roi_cache_dir"])
+                / f"{sid.replace('/', '_').replace(' ', '_')}_roi.json").exists())
+
+if len(valid_slides) < 2:
+    st.warning("Need at least 2 valid slides. Configure them in **📁 Study Setup**.")
+    st.stop()
+
+n_cond = len({s["condition"] for s in valid_slides})
+st.markdown(
+    f"**{len(valid_slides)}** valid slides across **{n_cond}** group(s) · "
+    f"**{n_roi}/{len(valid_slides)}** ROIs saved."
+)
+
+# ── Options ───────────────────────────────────────────────────────────────────
+c1, c2, c3 = st.columns(3)
+with c1:
+    use_roi = st.toggle("Apply MBH ROIs", value=(n_roi > 0),
+                        help="Restrict each slide to its saved ROI before pseudobulk.")
+    if use_roi and n_roi < len(valid_slides):
+        st.caption(f"⚠️ Only {n_roi}/{len(valid_slides)} ROIs saved — slides without one use the whole section.")
+with c2:
+    n_top_genes = st.number_input("Top variable genes (0 = all)", min_value=0, max_value=5000,
+                                  value=0, step=50,
+                                  help="Restrict PCA to the N most variable genes. 0 uses all "
+                                       "genes (recommended for targeted Xenium panels).")
+with c3:
+    scale_genes = st.toggle("Z-score genes", value=False,
+                            help="Standardise each gene before PCA. Off by default "
+                                 "(log1p already stabilises variance).")
+
+out_root = Path(st.session_state["output_dir"]) / "sample_pca"
+
+run = st.button("▶ Run sample PCA", type="primary", use_container_width=True)
+
+if run:
+    try:
+        with st.spinner("Loading slides, applying ROIs, and pseudobulking …"):
+            run_dirs   = tuple(str(s["run_dir"]) for s in valid_slides)
+            sids       = tuple(slide_ids)
+            conditions = tuple(s["condition"] for s in valid_slides)
+            roi_sig    = _roi_signature(sids, st.session_state["roi_cache_dir"])
+
+            adata = _load_combined(
+                run_dirs, sids, conditions,
+                st.session_state["base_panel_csv"],
+                st.session_state["roi_cache_dir"], use_roi,
+                st.session_state["panel_mode"], int(st.session_state["min_slides"]),
+                roi_sig,
+            )
+
+        with st.spinner("Running PCA and rendering figures …"):
+            from src.sample_pca import (
+                sample_level_pca_analysis,
+                plot_sample_pca, plot_sample_correlation, plot_scree,
+            )
+            out_root.mkdir(parents=True, exist_ok=True)
+            pb = sample_level_pca_analysis(
+                adata, output_dir=out_root,
+                sample_key="replicate", condition_key="condition",
+                n_top_genes=int(n_top_genes), scale_genes=bool(scale_genes),
+                fmt="pdf",
+            )
+            # Also render PNGs for inline display.
+            plot_sample_pca(pb, output_dir=out_root, fmt="png")
+            plot_sample_correlation(pb, output_dir=out_root, fmt="png")
+            plot_scree(pb, output_dir=out_root, fmt="png")
+
+        st.session_state["pca_ran"] = True
+        st.success(f"Done — {pb.n_obs} samples × {pb.n_vars} genes. Outputs in `{out_root}`.")
+    except Exception as e:
+        st.session_state["pca_ran"] = False
+        st.error(f"Sample PCA failed: {e}")
+        st.exception(e)
+
+# ── Results ───────────────────────────────────────────────────────────────────
+scatter_png = out_root / "sample_pca_scatter.png"
+if scatter_png.exists():
+    st.divider()
+    st.subheader("Results")
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.image(str(scatter_png), caption="Sample-level PCA (pseudobulk)", use_container_width=True)
+    with right:
+        scree_png = out_root / "sample_pca_scree.png"
+        if scree_png.exists():
+            st.image(str(scree_png), caption="Variance explained", use_container_width=True)
+
+    corr_png = out_root / "sample_correlation_heatmap.png"
+    if corr_png.exists():
+        st.image(str(corr_png), caption="Sample correlation (hierarchically ordered)",
+                 use_container_width=False, width=480)
+
+    # Coordinate table
+    coord_csv = out_root / "sample_pca_coordinates.csv"
+    if coord_csv.exists():
+        st.markdown("**PC coordinates**")
+        st.dataframe(pd.read_csv(coord_csv, index_col=0), use_container_width=True)
+
+    # Downloads (Nature-style PDFs + tables)
+    st.markdown("**Downloads**")
+    dcols = st.columns(4)
+    downloads = [
+        ("sample_pca_scatter.pdf",         "⬇️ PCA scatter (PDF)",    "application/pdf"),
+        ("sample_correlation_heatmap.pdf", "⬇️ Correlation (PDF)",    "application/pdf"),
+        ("sample_pca_scree.pdf",           "⬇️ Scree (PDF)",          "application/pdf"),
+        ("sample_pca_coordinates.csv",     "⬇️ Coordinates (CSV)",    "text/csv"),
+    ]
+    for col, (fname, label, mime) in zip(dcols, downloads):
+        fpath = out_root / fname
+        if fpath.exists():
+            with col:
+                st.download_button(label, data=fpath.read_bytes(),
+                                   file_name=fname, mime=mime, use_container_width=True)
+else:
+    st.info("Configure slides and ROIs, then click **Run sample PCA**.")
