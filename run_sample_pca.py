@@ -1,0 +1,148 @@
+"""
+run_sample_pca.py
+-----------------
+First analysis step for the AGED vs ADULT Xenium study:
+load the slides, apply the per-slide MBH ROIs, and run a
+sample-level (pseudobulk) PCA.
+
+This answers the question that has to come *before* any cell-level
+clustering or DGE: do the 8 samples separate by group (AGED vs
+ADULT), and are there outlier slides we should be aware of?
+
+Usage
+-----
+    # Default: load all 8 slides, apply saved ROIs, run sample PCA
+    python run_sample_pca.py
+
+    # Ignore ROIs and use whole sections
+    python run_sample_pca.py --no-roi
+
+    # Restrict PCA to the 200 most variable genes and z-score them
+    python run_sample_pca.py --n-top-genes 200 --scale-genes
+
+Outputs (in figures_output_sample_pca/)
+    sample_pca_scatter.<fmt>          PC1 vs PC2, coloured by group
+    sample_correlation_heatmap.<fmt>  hierarchically-clustered sample r
+    sample_pca_scree.<fmt>            variance explained per PC
+    sample_pca_coordinates.csv        PC coordinates + metadata
+    sample_pca_variance.csv           variance ratios
+    pseudobulk_samples.h5ad           pseudobulk AnnData
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src.multislide_loader import SlideManifest, MultiSlideLoader
+from src.panel_registry import PanelRegistry
+from src.roi_selector import ROISelector
+from src.sample_pca import sample_level_pca_analysis
+
+logger = logging.getLogger("SamplePCA")
+
+
+# ===========================================================================
+# Study configuration (mirrors run_xenium_mbh.py)
+# ===========================================================================
+
+ROOT_DATA  = Path("data")
+OUTPUT_DIR = Path("figures_output_sample_pca")
+ROI_CACHE  = Path("roi_cache")
+BASE_PANEL = Path("data/Xenium_mBrain_v1_1_metadata.csv")
+
+SLIDES = [
+    {"slide_id": "AGED_1",  "condition": "AGED",  "run_dir": ROOT_DATA / "AGED_1"},
+    {"slide_id": "AGED_2",  "condition": "AGED",  "run_dir": ROOT_DATA / "AGED_2"},
+    {"slide_id": "AGED_3",  "condition": "AGED",  "run_dir": ROOT_DATA / "AGED_3"},
+    {"slide_id": "AGED_4",  "condition": "AGED",  "run_dir": ROOT_DATA / "AGED_4"},
+    {"slide_id": "ADULT_1", "condition": "ADULT", "run_dir": ROOT_DATA / "ADULT_1"},
+    {"slide_id": "ADULT_2", "condition": "ADULT", "run_dir": ROOT_DATA / "ADULT_2"},
+    {"slide_id": "ADULT_3", "condition": "ADULT", "run_dir": ROOT_DATA / "ADULT_3"},
+    {"slide_id": "ADULT_4", "condition": "ADULT", "run_dir": ROOT_DATA / "ADULT_4"},
+]
+
+
+def main(
+    use_roi: bool = True,
+    panel_mode: str = "partial_union",
+    min_slides: int = 2,
+    n_top_genes: int = 0,
+    scale_genes: bool = False,
+    fmt: str = "pdf",
+) -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. Manifest of all slides.
+    manifest = SlideManifest()
+    for s in SLIDES:
+        manifest.add(
+            slide_id=s["slide_id"], condition=s["condition"],
+            run_dir=s["run_dir"], replicate_id=s["slide_id"],
+        )
+
+    # 2. Panel registry + optional ROI selector.
+    registry = PanelRegistry(BASE_PANEL)
+    roi_selector = ROISelector(cache_dir=ROI_CACHE) if use_roi else None
+    if use_roi and not any(roi_selector.has_roi(s["slide_id"]) for s in SLIDES):
+        logger.warning(
+            "ROI requested but no saved ROIs found in %s/. Draw ROIs first "
+            "(run_xenium_mbh.py) or pass --no-roi to use whole sections.",
+            ROI_CACHE,
+        )
+
+    # 3. Load + harmonise + ROI-filter + concatenate.
+    loader = MultiSlideLoader(
+        manifest=manifest,
+        panel_registry=registry,
+        roi_selector=roi_selector,
+        panel_mode=panel_mode,
+        min_slides=min_slides,
+        apply_roi=use_roi,
+        output_dir=OUTPUT_DIR,
+    )
+    adata = loader.load_all()
+
+    # 4. Sample-level PCA.
+    sample_level_pca_analysis(
+        adata,
+        output_dir=OUTPUT_DIR,
+        sample_key="replicate",
+        condition_key="condition",
+        n_top_genes=n_top_genes,
+        scale_genes=scale_genes,
+        fmt=fmt,
+    )
+
+    logger.info("Done. See %s/ for figures and tables.", OUTPUT_DIR)
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Sample-level PCA for the AGED vs ADULT study.")
+    p.add_argument("--no-roi", action="store_true", help="Use whole sections (skip ROI filtering).")
+    p.add_argument("--panel-mode", default="partial_union",
+                   choices=["intersection", "partial_union", "union"])
+    p.add_argument("--min-slides", type=int, default=2,
+                   help="Min slides a custom gene must appear in (partial_union).")
+    p.add_argument("--n-top-genes", type=int, default=0,
+                   help="Restrict PCA to N most variable genes (0 = all genes).")
+    p.add_argument("--scale-genes", action="store_true",
+                   help="Z-score genes before PCA.")
+    p.add_argument("--fmt", default="pdf", choices=["pdf", "svg", "png"])
+    args = p.parse_args()
+
+    main(
+        use_roi=not args.no_roi,
+        panel_mode=args.panel_mode,
+        min_slides=args.min_slides,
+        n_top_genes=args.n_top_genes,
+        scale_genes=args.scale_genes,
+        fmt=args.fmt,
+    )
