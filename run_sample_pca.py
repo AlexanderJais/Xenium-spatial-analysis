@@ -45,7 +45,7 @@ logger = logging.getLogger("SamplePCA")
 
 
 # ===========================================================================
-# Study configuration (mirrors run_xenium_mbh.py)
+# Study configuration (edit these paths, or use the web app's Study Setup)
 # ===========================================================================
 
 ROOT_DATA  = Path("data")
@@ -93,8 +93,8 @@ def main(
     roi_selector = ROISelector(cache_dir=ROI_CACHE) if use_roi else None
     if use_roi and not any(roi_selector.has_roi(s["slide_id"]) for s in SLIDES):
         logger.warning(
-            "ROI requested but no saved ROIs found in %s/. Draw ROIs first "
-            "(run_xenium_mbh.py) or pass --no-roi to use whole sections.",
+            "ROI requested but no saved ROIs found in %s/. Frame ROIs first "
+            "in the web app's ROI Manager, or pass --no-roi to use whole sections.",
             ROI_CACHE,
         )
 

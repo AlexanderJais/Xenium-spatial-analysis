@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # install_mac.sh
-# macOS Apple Silicon (M1/M2/M3/M4) installer for the Xenium DGE Pipeline
+# macOS Apple Silicon (M1/M2/M3/M4) installer for Xenium Sample PCA
 # =============================================================================
 # Run once from the project root:
 #   chmod +x install_mac.sh && ./install_mac.sh
@@ -9,8 +9,8 @@
 # What this does:
 #   1.  Ensures Xcode Command Line Tools are present
 #   2.  Installs Miniforge3 (ARM64 conda) directly via curl — no Homebrew needed
-#   3.  Creates the conda environment: xenium_dge  (Python 3.11)
-#   4.  Installs all packages via conda-forge + pip (native ARM64 binaries)
+#   3.  Creates the conda environment: xenium_sample_pca  (Python 3.11)
+#   4.  Installs the (small) dependency set via conda-forge + pip
 #   5.  Verifies the installation
 #   6.  Sets the macOS matplotlib backend
 # =============================================================================
@@ -21,7 +21,7 @@
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 RED='\033[0;31m'; BOLD='\033[1m'; RESET='\033[0m'
 
-ENV_NAME="xenium_dge"
+ENV_NAME="xenium_sample_pca"
 PYTHON_VERSION="3.11"
 MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh"
 MINIFORGE_INSTALLER="/tmp/Miniforge3-arm64.sh"
@@ -33,7 +33,7 @@ fail() { echo -e "${RED}[ FAIL ]${RESET} $*"; echo ""; echo "Installation stoppe
 sep()  { echo -e "${BOLD}────────────────────────────────────────────────${RESET}"; }
 
 sep
-echo -e "${BOLD}  Xenium DGE Pipeline — macOS Installer${RESET}"
+echo -e "${BOLD}  Xenium Sample PCA — macOS Installer${RESET}"
 echo -e "  Environment : ${ENV_NAME}  |  Python ${PYTHON_VERSION}"
 sep
 echo ""
@@ -166,54 +166,24 @@ ok "Active Python: $ACTIVE_PY  |  $(which python)"
 
 # --- 4a. Core scientific stack (conda-forge — best ARM64 builds) -------------
 log "Installing core scientific stack via conda-forge …"
-log "(This is the longest step — ~5 minutes)"
 conda install -n "$ENV_NAME" -c conda-forge -y \
     numpy \
     pandas \
     scipy \
-    matplotlib \
-    seaborn \
     scikit-learn \
-    statsmodels \
+    matplotlib \
+    anndata \
     pyarrow \
     h5py \
     hdf5 \
-    numba \
-    umap-learn \
-    leidenalg \
-    igraph \
-    python-igraph \
-    louvain \
-    pynndescent \
-    tk \
     || fail "conda-forge core install failed."
 ok "Core scientific stack installed."
 
-# --- 4b. scanpy + anndata ----------------------------------------------------
-log "Installing scanpy and anndata …"
-conda install -n "$ENV_NAME" -c conda-forge -y scanpy anndata \
-    || fail "scanpy/anndata install failed."
-ok "scanpy + anndata installed."
-
-# --- 4c. pip packages (not on conda-forge or better via pip) -----------------
-log "Installing pip packages (harmonypy, pydeseq2, streamlit, plotly …) …"
-
-pip install \
-    harmonypy \
-    pydeseq2 \
-    streamlit \
-    plotly \
-    adjustText \
-    tqdm \
-    scikit-misc \
-    --quiet \
+# --- 4b. Web interface (pip) -------------------------------------------------
+log "Installing the web interface (streamlit, plotly) …"
+pip install streamlit plotly --quiet \
     || fail "pip install failed."
-ok "pip packages installed."
-
-# --- 4d. Optional: squidpy (neighbourhood enrichment) -----------------------
-log "Installing squidpy (optional — neighbourhood enrichment) …"
-pip install squidpy --quiet && ok "squidpy installed." \
-    || warn "squidpy install failed — neighbourhood enrichment will be skipped (non-fatal)."
+ok "Web interface installed."
 
 # =============================================================================
 # 5. Verification
@@ -229,25 +199,12 @@ required = [
     ("numpy",        "numpy"),
     ("pandas",       "pandas"),
     ("scipy",        "scipy"),
+    ("scikit-learn", "sklearn"),
     ("matplotlib",   "matplotlib"),
-    ("seaborn",      "seaborn"),
-    ("statsmodels",  "statsmodels"),
     ("anndata",      "anndata"),
-    ("scanpy",       "scanpy"),
-    ("harmonypy",    "harmonypy"),
-    ("leidenalg",    "leidenalg"),
-    ("umap",         "umap"),
     ("pyarrow",      "pyarrow"),
     ("streamlit",    "streamlit"),
     ("plotly",       "plotly"),
-    ("tkinter",      "tkinter"),
-]
-
-optional = [
-    ("pydeseq2",    "pydeseq2.dds",   "wilcoxon will be used as fallback"),
-    ("squidpy",     "squidpy",         "neighbourhood enrichment will be skipped"),
-    ("adjustText",  "adjustText",      "volcano gene labels will overlap"),
-    ("scikit-misc", "skmisc",          "seurat_v3 HVG flavour unavailable; use 'seurat' instead"),
 ]
 
 for label, mod in required:
@@ -257,13 +214,6 @@ for label, mod in required:
     except ImportError as e:
         print(f"  \033[31m✗\033[0m  {label}  —  {e}")
         failures.append(label)
-
-for label, mod, note in optional:
-    try:
-        __import__(mod)
-        print(f"  \033[32m✓\033[0m  {label}  (optional)")
-    except ImportError:
-        print(f"  \033[33m~\033[0m  {label}  (optional — {note})")
 
 print("")
 if failures:
@@ -315,13 +265,10 @@ echo -e "  ${BOLD}To launch the web interface (easiest):${RESET}"
 echo -e "    Double-click  ${CYAN}start_app.command${RESET}  in Finder"
 echo -e "    — or —"
 echo -e "    ${CYAN}conda activate ${ENV_NAME}${RESET}"
-echo -e "    ${CYAN}cd app && streamlit run app.py${RESET}"
+echo -e "    ${CYAN}streamlit run app/app.py${RESET}"
 echo ""
-echo -e "  ${BOLD}To launch the desktop GUI:${RESET}"
-echo -e "    ${CYAN}conda activate ${ENV_NAME} && python launcher.py${RESET}"
-echo ""
-echo -e "  ${BOLD}To run the pipeline from the command line:${RESET}"
-echo -e "    ${CYAN}conda activate ${ENV_NAME} && python run_xenium_mbh.py${RESET}"
+echo -e "  ${BOLD}To run the sample PCA from the command line:${RESET}"
+echo -e "    ${CYAN}conda activate ${ENV_NAME} && python run_sample_pca.py${RESET}"
 echo ""
 echo -e "  ${BOLD}Note:${RESET} Open a new Terminal tab before running — the"
 echo -e "  'conda activate' command needs the updated shell profile."

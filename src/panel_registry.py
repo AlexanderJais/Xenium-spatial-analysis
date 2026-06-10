@@ -425,7 +425,6 @@ class PanelRegistry:
             gene_order = base_in_any + kept_custom
 
             n_all     = (overlap_df["category"] == "shared_all").sum()
-            n_partial = (overlap_df["category"] == "shared_partial").sum()
             n_dropped = (overlap_df["n_slides"] < min_slides).sum()
             logger.info(
                 "Harmonise [partial_union, min_slides=%d/%d]:\n"

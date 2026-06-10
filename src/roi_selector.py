@@ -392,7 +392,6 @@ class ROISelector:
     ) -> dict:
         """Freehand lasso selector."""
         from matplotlib.widgets import LassoSelector
-        from matplotlib.path import Path as MplPath
 
         fig, ax = plt.subplots(figsize=figsize)
         self._scatter_background(ax, adata, xy, colour_key)

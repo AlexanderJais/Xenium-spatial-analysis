@@ -1,5 +1,5 @@
 #!/bin/bash
-# start_app.command — Double-click in Finder to launch the Xenium DGE web interface.
+# start_app.command — Double-click in Finder to launch the Xenium Sample PCA web interface.
 # Opens Streamlit at http://localhost:8501 in your default browser.
 
 set -e
@@ -18,13 +18,13 @@ else
     exit 1
 fi
 
-conda activate xenium_dge 2>/dev/null || {
-    echo "ERROR: 'xenium_dge' environment not found. Run install_mac.sh first."
+conda activate xenium_sample_pca 2>/dev/null || {
+    echo "ERROR: 'xenium_sample_pca' environment not found. Run install_mac.sh first."
     read -rp "Press Enter to close..."
     exit 1
 }
 
-echo "Starting Xenium DGE web interface..."
+echo "Starting Xenium Sample PCA web interface..."
 echo "Open http://localhost:8501 if your browser does not open automatically."
 echo ""
 streamlit run app/app.py

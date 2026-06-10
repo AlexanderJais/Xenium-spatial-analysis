@@ -1,4 +1,4 @@
-# Xenium DGE Pipeline -- macOS Quick Start (Apple Silicon)
+# Xenium Sample PCA — macOS Quick Start (Apple Silicon)
 
 > Tested on MacBook Pro M1/M2/M3/M4, macOS Ventura/Sonoma/Sequoia.
 > For full documentation see [README.md](README.md).
@@ -11,63 +11,50 @@ You need **nothing** pre-installed except macOS. The installer handles everythin
 
 ---
 
-## 1. Install (~8 minutes, one-time)
+## 1. Install (one-time)
 
 Open **Terminal**, navigate to the project folder, and run:
 
 ```bash
-cd /path/to/xenium_dge
+cd /path/to/xenium-spatial-analysis
 chmod +x install_mac.sh
 ./install_mac.sh
 ```
 
-This installs:
+This installs Miniforge3 (ARM64 conda) if needed, creates a Python 3.11 environment, and installs the dependencies:
 
 | Component | Details |
 |-----------|---------|
-| Miniforge3 (ARM64 conda) | Downloaded automatically if not present |
 | Python 3.11 | Native Apple Silicon via conda-forge |
-| Scientific stack | numpy, pandas, scipy, matplotlib, seaborn, statsmodels |
-| Single-cell | scanpy, anndata, leidenalg, igraph, umap-learn |
-| Batch correction | harmonypy |
-| DGE | PyDESeq2 (optional, Wilcoxon fallback available) |
+| Core stack | numpy, pandas, scipy, scikit-learn, matplotlib |
+| Data | anndata, pyarrow (`cells.parquet`) |
 | Web interface | streamlit, plotly |
-| Spatial (optional) | squidpy |
-| GUI support | Tkinter (bundled via conda-forge `tk`) |
 
-Total disk: ~1.8 GB.
+Alternatively, in any environment: `pip install -r requirements.txt`.
 
 ---
 
 ## 2. Launch
 
-**Option A -- Web app (recommended):**
+**Option A — Web app (recommended):**
 
-Double-click `start_app.command` in Finder. Your browser opens at http://localhost:8501.
-
-Or from Terminal:
+Double-click `start_app.command` in Finder, or from Terminal:
 ```bash
-conda activate xenium_dge
+conda activate xenium_sample_pca
 streamlit run app/app.py
 ```
+Your browser opens at http://localhost:8501.
 
-**Option B -- Desktop GUI:**
+**Option B — Command line (headless, after ROIs are saved):**
 ```bash
-conda activate xenium_dge
-python launcher.py
-```
-
-**Option C -- Command line (headless):**
-```bash
-conda activate xenium_dge
-python run_xenium_mbh.py               # interactive ROI drawing
-python run_xenium_mbh.py --no-roi-gui  # use saved/preset ROIs
-python run_xenium_mbh.py --redraw-roi  # force ROI redraw for all slides
+conda activate xenium_sample_pca
+python run_sample_pca.py            # apply saved ROIs, run PCA
+python run_sample_pca.py --no-roi   # use whole sections
 ```
 
 ---
 
-## 3. Enter your Xenium folder paths
+## 3. Step 1 — Study Setup
 
 Each Xenium run directory must contain:
 
@@ -81,49 +68,25 @@ Each Xenium run directory must contain:
     experiment.xenium
 ```
 
-**Web app:** Go to **📁 Study Setup** and paste the full path to each run directory. A green tick confirms validity. The page shows cell count and gene count per slide once validated.
+Go to **📁 Study Setup** and paste the full path to each of the 8 run directories. A green tick confirms validity; the page shows the cell and gene counts per slide once validated.
 
-**Desktop launcher:** Click **Browse...** next to each slide row.
+**Tip:** On macOS, right-click a folder in Finder → Get Info → copy the path from *Where*.
 
-**Tip:** On macOS, right-click a folder in Finder -> Get Info -> copy the path from *Where*.
-
----
-
-## 4. Configure settings
-
-Go to **⚙️ Pipeline Settings** (web app) or the Settings panel (launcher). Key decisions:
-
-| Option | Default | Recommendation |
-|--------|---------|----------------|
-| **DGE method** | `stringent_wilcoxon` | Best for n=4 per condition. Use `cside` for per-cell-type pseudobulk (publication). `pydeseq2` needs n >= 8. |
-| **Panel mode** | `partial_union` | Keeps base + custom genes in >= 2 slides. Best balance of coverage vs noise. |
-| **Leiden resolution** | 0.6 | Increase for finer clusters, decrease for coarser. |
-| **Figure format** | `pdf` | Editable in Illustrator/Affinity. `png` or `svg` also available. |
-
-All parameters have sensible defaults -- you can skip this step for a first run.
+Click **Save configuration to JSON** to store all paths so you never re-enter them — **Load** restores them next session. See the [README](README.md#configuration-file-format) for the schema.
 
 ---
 
-## 5. Save / load config
+## 4. Step 2 — ROI Manager
 
-Click **Save config** to write all paths and settings to a JSON file. Click **Load config** to restore a previous session -- no need to re-enter all 8 folder paths.
+Define the mediobasal hypothalamus (MBH) boundary on each slide.
 
-See the [README](README.md#configuration-file-format) for the JSON schema.
+1. Select a slide from the dropdown.
+2. Use the four sliders to frame the MBH bounding rectangle (left/right x, top/bottom y).
+3. The scatter and cell count update live as you adjust.
+4. The dashed orange ellipse is an anatomical atlas hint — the MBH sits in the ventral 50–80% of a coronal section (larger y = ventral).
+5. Click **Save ROI** when the rectangle covers the MBH.
 
----
-
-## 6. Draw ROIs
-
-**Before running the pipeline**, define the mediobasal hypothalamus boundary on each slide.
-
-**Web app (🗺️ ROI Manager):**
-1. Select a slide from the dropdown
-2. Use the four sliders to frame the MBH bounding rectangle (left/right x, top/bottom y)
-3. The scatter plot and cell count update live as you adjust
-4. The dashed orange ellipse is an anatomical atlas hint -- adjust to your histology
-5. Click **Save ROI** when the rectangle covers the MBH boundary
-
-**For precise coordinates:** use the **manual coordinate entry** panel. Paste x,y vertex pairs in micrometres, one per line:
+**Precise coordinates:** use the *Paste coordinates* panel — one `x, y` pair per line in micrometres:
 ```
 3200, 4100
 3800, 4100
@@ -131,92 +94,54 @@ See the [README](README.md#configuration-file-format) for the JSON schema.
 3200, 4700
 ```
 
-**Copy ROIs:** If sections are at similar coordinates, draw once and copy to other slides using the **Copy this ROI** expander.
-
-**CLI mode:** A Matplotlib window opens per slide. Draw a polygon, then right-click or press Enter to close.
-
-Saved ROIs are reused automatically on every subsequent run.
+**Copy ROIs:** if sections are at similar coordinates, save once and copy to other slides via *Copy to other slides*. Saved ROIs live in `roi_cache/` and are reused automatically on every run.
 
 ---
 
-## 7. Run the pipeline
+## 5. Step 3 — Sample PCA
 
-**Web app:** Go to **🚀 Run Pipeline** and click **Run Pipeline**. Pre-flight checks validate all slides first. The log streams live with colour-coded output. A Stop button is always available.
+Go to **📊 Sample PCA** and click **Run sample PCA**. The app loads the slides, applies the saved ROIs, pseudobulks each sample, and runs PCA across them.
 
-**Runtime:** ~15--25 minutes for 8 slides on M4 Pro.
+Options:
+- **Apply MBH ROIs** — on by default once ROIs exist; turn off to use whole sections.
+- **Top variable genes** — 0 uses all genes (recommended for the targeted panel).
+- **Z-score genes** — off by default (`log1p` already stabilises variance).
 
----
-
-## 8. View results
-
-**Web app (📊 Results):**
-- Up to 25 figures displayed inline with dropdown selector and thumbnail gallery (figures 18--25 require Gal in the gene panel)
-- Download buttons for each figure
-- Tabs for: Global DGE table, Cluster DGE table, Moran's I, Panel validation, AnnData `.h5ad`
-
-**Gene Explorer (🔬):**
-- Generate on-demand spatial expression maps for any gene
-- Reads from the preprocessed AnnData cache -- no pipeline rerun needed
+You get three figures inline:
+- **PCA scatter** — PC1 vs PC2, samples coloured by group (AGED/ADULT) with per-group hulls.
+- **Correlation heatmap** — sample-by-sample correlation, hierarchically ordered (spot outliers).
+- **Scree plot** — variance explained per PC.
 
 ### Output files
 
-All files are saved to your output directory:
+Written to `<output_dir>/sample_pca/`:
 
 | File | Description |
 |------|-------------|
-| `fig1_qc.pdf` ... `fig17_neuropeptide_modules.pdf` | 17 publication-ready figures (Nature PG standards, editable PDF) |
-| `global_dge_aged_vs_adult.csv` | Full DGE results |
-| `cluster_dge_results.csv` | Per-cluster DGE |
-| `cluster_dge_summary.csv` | DEG counts per cluster |
-| `morans_i_mbh.csv` | Spatially variable genes |
-| `panel_validation.csv` | Per-slide panel composition |
-| `adata_mbh_final.h5ad` | Final annotated AnnData |
-
----
-
-## Memory usage
-
-| Step | Approx. RAM |
-|------|-------------|
-| Loading 8 slides (~3 000 cells x ~297 genes each) | ~2 GB |
-| After MBH ROI filter (~15% of tissue) | ~400 MB |
-| PCA + Harmony | ~1 GB peak |
-| UMAP + figures | ~1 GB |
-| **Total peak** | **~3--4 GB** |
-
-48 GB is more than sufficient. For very large slides (50 000+ cells), set `n_top_genes = 100` in Settings.
+| `sample_pca_scatter.pdf` | PC1 vs PC2 coloured by group |
+| `sample_correlation_heatmap.pdf` | Hierarchically-ordered sample correlation |
+| `sample_pca_scree.pdf` | Variance explained per PC |
+| `sample_pca_coordinates.csv` | PC coordinates + metadata per sample |
+| `sample_pca_variance.csv` | Variance ratios |
+| `pseudobulk_samples.h5ad` | Pseudobulk AnnData |
 
 ---
 
 ## Troubleshooting
 
-**"No module named scanpy"**
-```bash
-conda activate xenium_dge   # always activate first
-```
+**ROI sliders not responding**
+Refresh the page (Cmd+R). If it persists, use the *Paste coordinates* panel.
 
-**Matplotlib window does not appear**
-```bash
-echo "backend: MacOSX" >> ~/.matplotlib/matplotlibrc
-```
+**`cell_feature_matrix/` not found**
+The path must be the Xenium run directory itself (containing `cell_feature_matrix/` and `cells.parquet`), not a parent folder.
 
-**leidenalg ImportError**
-```bash
-conda install -n xenium_dge -c conda-forge leidenalg -y
-```
+**ROI selects 0 cells**
+The MBH is ventral (larger y). Use the dashed orange atlas-hint ellipse as a guide and re-frame.
 
-**PyDESeq2 finds no significant genes**
-Expected with n=4 per condition -- pseudobulk needs >= 8 replicates for power. Use `stringent_wilcoxon` (default) or `cside` instead.
+**PCA separates samples by cell number, not biology**
+The built-in workflow always CPM-normalises before PCA. If you call the functions directly, run `normalize_pseudobulk` before `run_sample_pca`.
 
-**Pipeline log shows Harmony error**
-```bash
-pip install harmonypy
-```
+**App is slow to load a slide scatter**
+The ROI Manager loads `cells.parquet` on demand and subsamples large slides for display. A few seconds for very large sections is normal.
 
-**Figures not appearing in Results**
-Verify the output directory in Study Setup matches what the pipeline used. Check the log for the exact output path.
-
-**App is slow to load slide scatter**
-The ROI Manager loads `cells.parquet` on demand. For very large slides (>50 000 cells) this may take a few seconds. The scatter is automatically subsampled to 15 000 cells for display speed.
-
-For more troubleshooting, see the **ℹ️ Help** page in the web app or the [README](README.md#troubleshooting).
+For more, see the [README](README.md#troubleshooting).
