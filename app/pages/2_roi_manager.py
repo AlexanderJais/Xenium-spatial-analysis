@@ -43,7 +43,7 @@ if str(_ROOT) not in sys.path:
 for k, v in {
     "slides"        : [],
     "roi_polygons"  : {},
-    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
+    "roi_cache_dir" : str(Path(__file__).parent.parent.parent / "roi_cache"),
     "roi_last_slide": None,
 }.items():
     if k not in st.session_state:

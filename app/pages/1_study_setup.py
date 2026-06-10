@@ -25,9 +25,9 @@ if "slides" not in st.session_state:
         {"slide_id": f"ADULT_{i}", "condition": "ADULT", "run_dir": ""} for i in range(1,5)
     ]
 for k, v in {
-    "base_panel_csv": str(Path(__file__).parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
-    "output_dir"    : str(Path.home() / "xenium_dge_output"),
-    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
+    "base_panel_csv": str(Path(__file__).parent.parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
+    "output_dir"    : str(Path.home() / "xenium_sample_pca_output"),
+    "roi_cache_dir" : str(Path(__file__).parent.parent.parent / "roi_cache"),
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v

@@ -39,7 +39,6 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.io
-import scipy.sparse as sp
 
 logger = logging.getLogger(__name__)
 
@@ -242,57 +241,6 @@ def load_xenium_run(
         adata.n_obs, adata.n_vars,
     )
     return adata
-
-
-def load_two_conditions(
-    dir_a: Path | str,
-    dir_b: Path | str,
-    label_a: str = "Control",
-    label_b: str = "Treatment",
-    load_transcripts: bool = False,
-) -> ad.AnnData:
-    """
-    Load two Xenium runs and concatenate (simple two-condition pipeline).
-
-    For the 4+4 AGED/ADULT study use MultiSlideLoader instead.
-    Barcodes are prefixed with the condition label to prevent collisions.
-    """
-    # Use neutral slide IDs (not the condition labels) so that Harmony's
-    # batch_key='slide_id' does not become confounded with condition.
-    # When each condition has only one slide, Harmony cannot meaningfully
-    # separate batch from biology; the pipeline logs a warning about this.
-    adata_a = load_xenium_run(dir_a, label_a, slide_id=f"{label_a}_slide1")
-    adata_b = load_xenium_run(dir_b, label_b, slide_id=f"{label_b}_slide1")
-
-    if adata_a.obs["slide_id"].nunique() == 1 and adata_b.obs["slide_id"].nunique() == 1:
-        logger.warning(
-            "load_two_conditions: only one slide per condition (%s, %s). "
-            "Harmony batch correction cannot separate technical batch from "
-            "biological condition with a single replicate each. "
-            "Consider disabling Harmony (set harmony_max_iter=0 or n_pcs=0) "
-            "or using MultiSlideLoader for multi-replicate studies.",
-            label_a, label_b,
-        )
-
-    adata_a.obs_names = [f"{label_a}__{bc}" for bc in adata_a.obs_names]
-    adata_b.obs_names = [f"{label_b}__{bc}" for bc in adata_b.obs_names]
-
-    combined = ad.concat(
-        [adata_a, adata_b], axis=0,
-        join="outer", merge="first", fill_value=0,
-    )
-    combined.obs_names_make_unique()
-    combined.var_names_make_unique()
-    combined.X = sp.csr_matrix(combined.X.astype(np.float32))
-    combined.layers["counts"] = combined.X.copy()
-
-    logger.info(
-        "Concatenated: %d cells x %d genes  (%s=%d, %s=%d)",
-        combined.n_obs, combined.n_vars,
-        label_a, adata_a.n_obs,
-        label_b, adata_b.n_obs,
-    )
-    return combined
 
 
 # ---------------------------------------------------------------------------

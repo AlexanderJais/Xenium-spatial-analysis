@@ -11,10 +11,9 @@ build/
 .env
 .venv
 venv/
-xenium_dge/
+xenium_sample_pca/
 
 # Cache directories
-.cache_mbh/
 *_cache/
 roi_cache/
 
@@ -37,6 +36,3 @@ figures_output/
 # IDE
 .vscode/
 .idea/
-
-# Zip (source is now extracted)
-xenium_dge_pipeline.zip

@@ -1,1 +1,1 @@
-"""Xenium DGE Pipeline - src package."""
+"""Xenium Sample PCA - src package."""

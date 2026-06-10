@@ -36,9 +36,9 @@ DEFAULTS = {
         {"slide_id": f"ADULT_{i}", "condition": "ADULT", "run_dir": ""}
         for i in range(1, 5)
     ],
-    "base_panel_csv": str(Path(__file__).parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
+    "base_panel_csv": str(Path(__file__).parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
     "output_dir"    : str(Path.home() / "xenium_sample_pca_output"),
-    "roi_cache_dir" : str(Path(__file__).parent / "roi_cache"),
+    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
     "panel_mode"    : "partial_union",
     "min_slides"    : 2,
     "roi_polygons"  : {},

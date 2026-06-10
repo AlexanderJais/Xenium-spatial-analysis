@@ -29,8 +29,8 @@ if str(_ROOT) not in sys.path:
 for k, v in {
     "slides"        : [],
     "roi_polygons"  : {},
-    "roi_cache_dir" : str(Path(__file__).parent.parent / "roi_cache"),
-    "base_panel_csv": str(Path(__file__).parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
+    "roi_cache_dir" : str(Path(__file__).parent.parent.parent / "roi_cache"),
+    "base_panel_csv": str(Path(__file__).parent.parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
     "output_dir"    : str(Path.home() / "xenium_sample_pca_output"),
     "panel_mode"    : "partial_union",
     "min_slides"    : 2,
