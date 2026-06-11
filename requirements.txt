@@ -23,6 +23,7 @@ anndata >= 0.10
 scanpy >= 1.10
 igraph >= 0.11
 leidenalg >= 0.10
+harmonypy >= 0.0.9          # batch integration across slides (Harmony toggle)
 
 # ── Parquet support (cells.parquet) ──────────────────────────────────────────
 pyarrow >= 14.0

@@ -52,6 +52,7 @@ def preprocess_for_clustering(
     n_neighbors: int = 15,
     target_sum: float = 1e4,
     scale_genes: bool = False,
+    batch_key: Optional[str] = None,
     counts_layer: str = "counts",
     random_state: int = 42,
 ) -> ad.AnnData:
@@ -63,7 +64,8 @@ def preprocess_for_clustering(
     The Leiden sweep needs ``obsm['X_pca']`` and ``obsp['connectivities']``,
     so this runs the standard cell-level recipe:
 
-        normalise_total -> log1p -> (optional z-score) -> PCA -> neighbours
+        normalise_total -> log1p -> (optional z-score) -> PCA
+          -> (optional Harmony) -> neighbours
 
     Raw counts are preserved in ``layers['counts']`` and ``obsm['spatial']``
     is carried through untouched.
@@ -81,14 +83,21 @@ def preprocess_for_clustering(
     scale_genes
         Z-score each gene before PCA.  Off by default — log1p already
         stabilises variance for the targeted Xenium panel.
+    batch_key
+        If given, run Harmony batch correction on the PCA embedding using this
+        ``.obs`` column (e.g. ``'slide_id'``) and build the neighbour graph on
+        the corrected ``X_pca_harmony`` instead of ``X_pca``.  Use this when
+        pooling many slides so clusters reflect cell type rather than which
+        slide a cell came from.  ``None`` (default) skips integration.
     counts_layer
         Layer holding the raw counts to normalise from.  Falls back to ``.X``.
     random_state
-        Seed for PCA / neighbour-graph reproducibility.
+        Seed for PCA / Harmony / neighbour-graph reproducibility.
 
     Returns
     -------
-    A new AnnData (the input is not modified) with ``obsm['X_pca']``,
+    A new AnnData (the input is not modified) with ``obsm['X_pca']`` (and
+    ``obsm['X_pca_harmony']`` when ``batch_key`` is set),
     ``obsp['connectivities']`` and the preserved ``obsm['spatial']``.
     """
     import scanpy as sc
@@ -118,21 +127,174 @@ def preprocess_for_clustering(
     n_pcs = min(n_pcs, max_pcs)
     sc.pp.pca(adata, n_comps=n_pcs, random_state=random_state)
 
+    # Optional Harmony batch correction. The neighbour graph (and therefore the
+    # clustering + every metric the sweep scores) is then built on the corrected
+    # embedding so it reflects biology rather than batch.
+    use_rep = "X_pca"
+    if batch_key is not None:
+        if batch_key not in adata.obs.columns:
+            logger.warning(
+                "batch_key='%s' not in adata.obs; skipping Harmony.", batch_key,
+            )
+        else:
+            adata = run_harmony(adata, batch_key=batch_key, random_state=random_state)
+            use_rep = "X_pca_harmony"
+
     # KNN graph — this is the graph the sweep evaluates for modularity and
     # the connectivities the Leiden algorithm clusters on.
     n_neighbors = min(n_neighbors, max(2, adata.n_obs - 1))
     sc.pp.neighbors(
         adata, n_neighbors=n_neighbors, n_pcs=n_pcs,
-        use_rep="X_pca", random_state=random_state,
+        use_rep=use_rep, random_state=random_state,
     )
 
     logger.info(
         "Preprocessed for clustering: %d cells x %d genes | PCA=%d comps, "
-        "KNN k=%d%s | spatial=%s",
-        adata.n_obs, adata.n_vars, n_pcs, n_neighbors,
+        "KNN k=%d on '%s'%s | spatial=%s",
+        adata.n_obs, adata.n_vars, n_pcs, n_neighbors, use_rep,
         " (z-scored)" if scale_genes else "",
         "yes" if "spatial" in adata.obsm else "no",
     )
+    return adata
+
+
+# ===========================================================================
+# Harmony batch correction
+# ===========================================================================
+
+def run_harmony(
+    adata: ad.AnnData,
+    batch_key: str = "slide_id",
+    max_iter: int = 30,
+    random_state: int = 42,
+) -> ad.AnnData:
+    """
+    Correct batch effects with Harmony on the PCA embedding.
+
+    Requires ``harmonypy`` to be installed.  Stores the corrected embedding in
+    ``.obsm['X_pca_harmony']``.
+
+    Parameters
+    ----------
+    adata
+        AnnData with ``.obsm['X_pca']`` already computed.
+    batch_key
+        Column in ``.obs`` distinguishing technical batches.  Use ``'slide_id'``
+        for a multi-slide study — using ``'condition'`` here would remove the
+        biological effect you are trying to detect.
+    max_iter
+        Maximum number of Harmony iterations.
+    random_state
+        Seed for reproducibility.
+    """
+    n_batches = adata.obs[batch_key].nunique()
+    if n_batches < 2:
+        logger.warning(
+            "Harmony skipped: only %d unique value(s) for batch_key='%s'. "
+            "Copying X_pca to X_pca_harmony unchanged.",
+            n_batches, batch_key,
+        )
+        adata.obsm["X_pca_harmony"] = adata.obsm["X_pca"].copy()
+        return adata
+
+    # Warn when each batch is a separate biological replicate: Harmony will then
+    # correct between-replicate variation, partially removing biological signal
+    # (Korsunsky et al. 2019, Tran et al. 2020).
+    if "condition" in adata.obs.columns:
+        batches_per_cond = adata.obs.groupby("condition", observed=True)[batch_key].nunique()
+        if batches_per_cond.sum() == n_batches:
+            logger.warning(
+                "Harmony: batch_key='%s' has %d unique values across %d conditions "
+                "(%s). Each batch is a separate biological replicate — Harmony will "
+                "correct between-replicate variation, risking partial removal of "
+                "true biological signal. Verify clusters still separate conditions.",
+                batch_key, n_batches, adata.obs["condition"].nunique(),
+                ", ".join(f"{c}: {n}" for c, n in batches_per_cond.items()),
+            )
+
+    # Fail fast if harmonypy is absent, before touching any data.
+    try:
+        import harmonypy as _hm_check  # noqa: F401
+    except ImportError:
+        try:
+            import scanpy.external as _sce_check  # noqa: F401
+        except (ImportError, AttributeError):
+            raise ImportError(
+                "harmonypy is required for batch correction. "
+                "Install with: pip install harmonypy"
+            )
+
+    logger.info("Running Harmony integration on key '%s' (%d batches) …", batch_key, n_batches)
+
+    # The scanpy harmony wrapper has a known shape-mismatch bug in some
+    # scanpy/harmonypy combinations (stores the transposed embedding). Probe it
+    # on a tiny subsample first; if it misbehaves, fall through to direct harmonypy.
+    _wrapper_ok = False
+    try:
+        import scanpy.external as sce
+        _n_probe = min(20, adata.n_obs)
+        _probe = adata[:_n_probe].copy()
+        sce.pp.harmony_integrate(
+            _probe, key=batch_key, basis="X_pca", adjusted_basis="X_pca_harmony",
+            max_iter_harmony=1, random_state=random_state, verbose=False,
+        )
+        if ("X_pca_harmony" in _probe.obsm
+                and _probe.obsm["X_pca_harmony"].shape[0] == _n_probe):
+            _wrapper_ok = True
+        del _probe
+    except Exception:
+        pass
+
+    if _wrapper_ok:
+        sce.pp.harmony_integrate(
+            adata, key=batch_key, basis="X_pca", adjusted_basis="X_pca_harmony",
+            max_iter_harmony=max_iter, random_state=random_state,
+        )
+        logger.info("Harmony complete via scanpy wrapper. Shape: %s",
+                    adata.obsm["X_pca_harmony"].shape)
+    else:
+        logger.debug("scanpy harmony wrapper unavailable/shape mismatch; using harmonypy directly.")
+        try:
+            import harmonypy as hm
+        except ImportError:
+            raise ImportError("harmonypy is required. Install with: pip install harmonypy")
+
+        import logging as _logging
+        _logging.getLogger("harmonypy").setLevel(_logging.WARNING)
+
+        pca_mat = adata.obsm["X_pca"].copy()
+        meta = adata.obs[[batch_key]].copy()
+        ho = hm.run_harmony(
+            pca_mat, meta, batch_key,
+            max_iter_harmony=max_iter, random_state=random_state, verbose=False,
+        )
+        n_cells, n_pcs = pca_mat.shape
+        Z = None
+        for attr in ["Z_corr", "result", "embedding"]:
+            candidate = getattr(ho, attr, None)
+            if candidate is not None:
+                Z = np.array(candidate)
+                break
+        if Z is None:
+            raise AttributeError(
+                "harmonypy result has no recognised embedding attribute. "
+                f"Available attrs: {[a for a in dir(ho) if not a.startswith('_')]}"
+            )
+        if Z.ndim == 1:
+            raise ValueError(
+                f"harmonypy returned a 1D array of shape {Z.shape}. "
+                "Please upgrade harmonypy: pip install --upgrade harmonypy"
+            )
+        if Z.shape == (n_pcs, n_cells):
+            Z = Z.T   # old API: (n_pcs, n_cells) -> (n_cells, n_pcs)
+        elif Z.shape != (n_cells, n_pcs):
+            raise ValueError(
+                f"harmonypy returned unexpected shape {Z.shape}; "
+                f"expected ({n_cells}, {n_pcs}) or ({n_pcs}, {n_cells})."
+            )
+        adata.obsm["X_pca_harmony"] = Z.astype(np.float32)
+        logger.info("Harmony complete via direct harmonypy. Shape: %s",
+                    adata.obsm["X_pca_harmony"].shape)
     return adata
 
 

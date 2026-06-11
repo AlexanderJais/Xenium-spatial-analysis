@@ -69,7 +69,8 @@ def _roi_signature(slide_ids, roi_dir) -> tuple:
 @st.cache_resource(show_spinner=False)
 def _load_and_preprocess(run_dirs, slide_ids, conditions, base_csv, roi_dir,
                          use_roi, panel_mode, min_slides, roi_sig,
-                         base_panel_only, n_pcs, n_neighbors, scale_genes):
+                         base_panel_only, n_pcs, n_neighbors, scale_genes,
+                         batch_key):
     """Load + harmonise + ROI-filter + concatenate slides, then build the
     cell-level PCA embedding and KNN graph the Leiden sweep needs (cached).
 
@@ -102,6 +103,7 @@ def _load_and_preprocess(run_dirs, slide_ids, conditions, base_csv, roi_dir,
 
     return preprocess_for_clustering(
         adata, n_pcs=n_pcs, n_neighbors=n_neighbors, scale_genes=scale_genes,
+        batch_key=batch_key,
     )
 
 
@@ -283,9 +285,27 @@ with p4:
     n_neighbors = st.number_input("KNN neighbours", min_value=2, max_value=100, value=15, step=1,
                                   help="Neighbours for the graph that Leiden clusters and "
                                        "modularity is scored on.")
-scale_genes = st.toggle("Z-score genes before PCA", value=False,
-                        help="Standardise each gene before PCA. Off by default "
-                             "(log1p already stabilises variance).")
+o1, o2 = st.columns(2)
+with o1:
+    scale_genes = st.toggle("Z-score genes before PCA", value=False,
+                            help="Standardise each gene before PCA. Off by default "
+                                 "(log1p already stabilises variance).")
+with o2:
+    n_selected = len(selected_slides)
+    use_harmony = st.toggle(
+        "Harmony batch correction", value=(n_selected > 1),
+        disabled=(n_selected < 2),
+        help="Integrate slides with Harmony on the PCA embedding (batch = slide_id) "
+             "before building the graph, so clusters reflect cell type rather than "
+             "which slide a cell came from. Strongly recommended when pooling many "
+             "slides. Requires harmonypy.",
+    )
+    if n_selected < 2:
+        st.caption("Only one slide selected — nothing to integrate.")
+    elif use_harmony:
+        st.caption("Clusters will be computed on the Harmony-corrected embedding (batch = `slide_id`).")
+
+batch_key = "slide_id" if (use_harmony and len(selected_slides) > 1) else None
 
 st.divider()
 
@@ -345,15 +365,17 @@ if run_clicked:
                 st.session_state["roi_cache_dir"], use_roi,
                 st.session_state["panel_mode"], int(st.session_state["min_slides"]),
                 roi_sig, bool(base_panel_only), int(n_pcs), int(n_neighbors),
-                bool(scale_genes),
+                bool(scale_genes), batch_key,
             )
 
         has_spatial = "spatial" in adata.obsm
         spatial_msg = ("spatial coherence enabled" if has_spatial
                        else "no spatial coords — spatial coherence disabled")
+        embed_msg = ("Harmony-integrated embedding" if "X_pca_harmony" in adata.obsm
+                     else "PCA embedding (no batch correction)")
         st.info(
-            f"Embedded {adata.n_obs:,} cells × {adata.n_vars:,} genes  "
-            f"({spatial_msg}).  Sweeping {len(resolutions)} resolutions …"
+            f"Embedded {adata.n_obs:,} cells × {adata.n_vars:,} genes on the "
+            f"{embed_msg}  ({spatial_msg}).  Sweeping {len(resolutions)} resolutions …"
         )
 
         progress_bar = st.progress(0, text="Starting sweep …")
