@@ -2,7 +2,7 @@
 
 **Sample-level (pseudobulk) PCA for AGED vs ADULT mouse brain (mediobasal hypothalamus)**
 
-A streamlined tool for the first exploratory step of a [10x Genomics Xenium](https://www.10xgenomics.com/platforms/xenium) spatial study: load the slides, frame the mediobasal hypothalamus (MBH) region on each, collapse every slide into a pseudobulk profile, and run PCA across the samples to see **how the samples cluster and how the AGED and ADULT groups separate** — before committing to any cell-level clustering or differential expression.
+A streamlined tool for the first exploratory steps of a [10x Genomics Xenium](https://www.10xgenomics.com/platforms/xenium) spatial study: load the slides, frame the mediobasal hypothalamus (MBH) region on each, collapse every slide into a pseudobulk profile, and run PCA across the samples to see **how the samples cluster and how the AGED and ADULT groups separate**. When you are ready to move from samples to cells, an optional **Leiden Optimizer** sweeps clustering resolutions on the single cells and recommends the one that best balances cluster quality and granularity — so the resolution you take into cell-level analysis is chosen by metrics, not by eye.
 
 Designed for a multi-replicate, two-condition study (4 AGED + 4 ADULT brain sections) using the `Xenium_mBrain_v1_1` base panel (~247 genes) plus per-slide custom panels (~50 genes each, partially overlapping).
 
@@ -17,6 +17,7 @@ Runs entirely on your machine. No data leaves your computer.
 - [Web interface](#web-interface)
 - [Command line](#command-line)
 - [How the PCA works](#how-the-pca-works)
+- [How the Leiden Optimizer works](#how-the-leiden-optimizer-works)
 - [Panel structure](#panel-structure)
 - [Outputs](#outputs)
 - [Configuration file format](#configuration-file-format)
@@ -45,7 +46,9 @@ cd /path/to/xenium-spatial-analysis
 pip install -r requirements.txt
 ```
 
-The dependency set is intentionally small (NumPy/pandas/SciPy/scikit-learn/Matplotlib + AnnData for data handling, Streamlit/Plotly for the UI, PyArrow for `cells.parquet`). No scanpy, Harmony, or DESeq2 is required.
+The core workflow (Study Setup → ROI Manager → Sample PCA, and the `run_sample_pca.py` CLI) uses an intentionally small dependency set: NumPy/pandas/SciPy/scikit-learn/Matplotlib + AnnData for data handling, Streamlit/Plotly for the UI, PyArrow for `cells.parquet`. No DESeq2 is required.
+
+The **Leiden Optimizer** (step 4) is the one part that needs the single-cell stack — `scanpy`, `igraph`, `leidenalg`, and `harmonypy` (all in `requirements.txt`). These are imported lazily, so the Sample-PCA workflow runs fine even if they are not installed; you only need them to run the resolution sweep.
 
 > **macOS Apple Silicon:** `./install_mac.sh` creates a native ARM64 conda environment and installs everything for you.
 
@@ -101,6 +104,32 @@ Pseudobulk PCA is the standard QC / sanity-check for replicated studies (cf. DES
 
 ---
 
+## How the Leiden Optimizer works
+
+The optimizer lives in `src/leiden_optimizer.py` and is driven by the **🔎 Leiden Optimizer** page. Where the Sample PCA collapses each slide to one point, the optimizer works at the **single-cell** level to answer the next question: *at what resolution should the cells be clustered?*
+
+It runs in three stages:
+
+1. **Load + embed** (`preprocess_for_clustering`) — the same slides and ROIs as the Sample PCA are loaded and concatenated, then a single-cell embedding is built on the fly: `normalize_total` → `log1p` → PCA → `sc.pp.neighbors` (the KNN graph). `obsm['spatial']` is carried through so spatial metrics stay available. The refactored pipeline only pseudobulks the cells, so this substrate (a PCA embedding + neighbour graph) does not otherwise exist — the optimizer builds it itself.
+2. **Optional Harmony integration** (`run_harmony`) — when several slides are pooled, plain PCA tends to separate cells by *which slide* they came from rather than by cell type. Harmony corrects the embedding (batch = `slide_id`) before the neighbour graph is built, so clustering and every metric below are computed on the batch-corrected space. On by default for multi-slide runs.
+3. **Resolution sweep** (`optimize_leiden_resolution`) — Leiden clustering is run across a grid of resolutions, and each is scored with five complementary cluster-quality metrics:
+
+| Metric | Direction | What it captures |
+|--------|-----------|------------------|
+| Silhouette | higher = better | Cluster separation in PCA / Harmony space |
+| Calinski-Harabasz | higher = better | Between- vs within-cluster variance ratio |
+| Davies-Bouldin | lower = better | Average similarity to the most-similar cluster |
+| Spatial coherence | higher = better | Fraction of each cell's spatial neighbours in the same cluster |
+| Modularity | higher = better | Community structure quality on the KNN graph |
+
+Each metric is min-max normalised to [0, 1] and combined into a single weighted score. With spatial coordinates the weights are **silhouette 30% · Calinski-Harabasz 15% · Davies-Bouldin 15% · spatial coherence 20% · modularity 20%**; without them, silhouette and modularity each take 35%. The resolution with the highest combined score is recommended.
+
+The page shows the per-metric curves, a **clustree** (Sankey diagram of how clusters split and merge across resolutions), and a one-click **Apply** that writes the chosen resolution to the pipeline settings. Silhouette is O(n²), so metrics are computed on a subsample (50k cells by default).
+
+> **Caveat for replicate designs.** With a 4 + 4 design each slide *is* a biological replicate of its condition, so correcting on `slide_id` can also attenuate genuine AGED-vs-ADULT signal. The page warns when this applies; after a sweep, confirm the recommended clusters still show the expected condition composition before relying on them.
+
+---
+
 ## Panel structure
 
 Every Xenium run produces one count matrix containing all genes for that slide:
@@ -140,6 +169,15 @@ All files are written to `<output_dir>/sample_pca/` (web app) or `figures_output
 
 Figures follow **Nature Publishing Group** conventions: Arial fonts, thin spines, editable PDF (Type 42 fonts), colour-blind-safe [Wong (2011)](https://doi.org/10.1038/nmeth.1618) group colours.
 
+The Leiden Optimizer writes to `<output_dir>/leiden_optimizer/`:
+
+| File | Description |
+|------|-------------|
+| `leiden_resolution_sweep.csv` | Per-resolution metrics (n_clusters, silhouette, CH, DB, spatial coherence, modularity, combined score) |
+| `pipeline_settings.json` | The applied `leiden_resolution`, restored on app start and merged into the study config |
+
+The recommended resolution is also stored in session state and saved with the study configuration JSON from **Study Setup**, so it travels with the rest of your settings.
+
 ---
 
 ## Configuration file format
@@ -153,11 +191,12 @@ Study Setup can save/load a JSON configuration so you never re-enter paths:
   ],
   "output_dir": "/path/to/results",
   "base_panel_csv": "data/Xenium_mBrain_v1_1_metadata.csv",
-  "roi_cache_dir": "roi_cache"
+  "roi_cache_dir": "roi_cache",
+  "leiden_resolution": 0.6
 }
 ```
 
-Only `slides` is required; the rest fall back to sensible defaults.
+Only `slides` is required; the rest fall back to sensible defaults. `leiden_resolution` is filled in by the Leiden Optimizer when you apply a recommendation (default `0.6` until then).
 
 ---
 
@@ -171,14 +210,15 @@ xenium-spatial-analysis/
 ├── requirements.txt             Python dependencies
 │
 ├── app/                         Web interface (Streamlit)
-│   ├── app.py                   3-step landing page
+│   ├── app.py                   4-step landing page
 │   ├── ui_utils.py              Shared CSS injection and page header
 │   ├── styles.css               Custom Streamlit styles
 │   ├── .streamlit/config.toml   Theme and server settings
 │   └── pages/
 │       ├── 1_study_setup.py     Slide folder configuration + JSON save/load
 │       ├── 2_roi_manager.py     Interactive ROI framing (Plotly + atlas hint)
-│       └── 3_sample_pca.py      Pseudobulk PCA + Nature-style figures
+│       ├── 3_sample_pca.py      Pseudobulk PCA + Nature-style figures
+│       └── 4_leiden_optimizer.py  Resolution sweep, scoring, clustree, apply
 │
 ├── data/
 │   └── Xenium_mBrain_v1_1_metadata.csv   Base panel gene list + annotations
@@ -188,7 +228,8 @@ xenium-spatial-analysis/
     ├── multislide_loader.py     Multi-slide manifest, validation, concat
     ├── panel_registry.py        Gene classification and panel harmonisation
     ├── roi_selector.py          ROI persistence + apply (reads roi_cache/)
-    └── sample_pca.py            Pseudobulk, normalise, PCA, and figures
+    ├── sample_pca.py            Pseudobulk, normalise, PCA, and figures
+    └── leiden_optimizer.py      Cell-level embedding + Leiden resolution sweep
 ```
 
 ---
@@ -207,6 +248,15 @@ See [`requirements.txt`](requirements.txt). Key packages:
 | anndata | 0.10 | Annotated data matrices |
 | pyarrow | 14.0 | Parquet support (`cells.parquet`) |
 
+Leiden Optimizer only (step 4 — lazily imported, not needed for Sample PCA):
+
+| Package | Min version | Purpose |
+|---------|-------------|---------|
+| scanpy | 1.10 | Normalisation, PCA, neighbour graph, Leiden |
+| igraph | 0.11 | Graph backend + modularity |
+| leidenalg | 0.10 | Leiden community detection |
+| harmonypy | 0.0.9 | Cross-slide batch integration (Harmony) |
+
 ---
 
 ## Troubleshooting
@@ -222,6 +272,12 @@ This usually means library-size normalisation was bypassed. The built-in workflo
 
 **Custom genes not appearing after harmonisation**
 Lower `min_slides`, or switch `panel_mode` to `union`.
+
+**Leiden clusters track the slide instead of cell type**
+This is batch effect across slides. Enable **Harmony batch correction** on the Leiden Optimizer page (on by default for multi-slide runs) so clustering happens on the integrated embedding. See the [replicate-design caveat](#how-the-leiden-optimizer-works) before trusting the result.
+
+**`No module named 'scanpy'` on the Leiden Optimizer page**
+The optimizer needs the single-cell stack. Install it with `pip install scanpy igraph leidenalg harmonypy` (already in `requirements.txt`); the other three pages do not require it.
 
 **ROI selects 0 cells**
 The MBH sits in the ventral 50–80% of a coronal section (larger y, since y increases toward ventral). Re-frame using the dashed orange atlas-hint ellipse as a guide.

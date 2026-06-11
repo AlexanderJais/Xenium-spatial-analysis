@@ -29,6 +29,9 @@ This installs Miniforge3 (ARM64 conda) if needed, creates a Python 3.11 environm
 | Core stack | numpy, pandas, scipy, scikit-learn, matplotlib |
 | Data | anndata, pyarrow (`cells.parquet`) |
 | Web interface | streamlit, plotly |
+| Leiden Optimizer (step 4) | scanpy, igraph, leidenalg, harmonypy |
+
+The Leiden Optimizer stack is installed last and is non-fatal: if it fails, the Sample-PCA workflow still works and you can add it later with `conda install -n xenium_sample_pca -c conda-forge scanpy python-igraph leidenalg harmonypy`.
 
 Alternatively, in any environment: `pip install -r requirements.txt`.
 
@@ -129,6 +132,30 @@ Written to `<output_dir>/sample_pca/`:
 
 ---
 
+## 6. Step 4 — Leiden Optimizer (optional)
+
+Once the Sample PCA looks sensible, go to **🔎 Leiden Optimizer** to choose a cell-level clustering resolution by metrics instead of by eye. It reuses the same slides and ROIs, builds a single-cell PCA + KNN graph, then sweeps Leiden resolutions and scores each on silhouette, Calinski-Harabasz, Davies-Bouldin, spatial coherence, and modularity.
+
+Set the options, then click **Run resolution sweep**:
+- **Apply MBH ROIs / Base panel only** — same meaning as on the Sample PCA page.
+- **PCA components / KNN neighbours** — the embedding and graph the sweep runs on (defaults 50 / 15 are fine for the targeted panel).
+- **Harmony batch correction** — on by default for multi-slide runs. Integrates slides (batch = `slide_id`) so clusters reflect cell type, not which slide a cell came from. *In a 4 + 4 replicate design this can also dampen real AGED-vs-ADULT differences — the page warns you, and you should check the recommended clusters still separate the conditions.*
+- **Min / Max / Step resolution** — the grid to sweep (default 0.1 → 2.0 by 0.1).
+- **Max cells for metric computation** — silhouette is O(n²); 50k is a good default, and the page warns above that.
+
+You get the per-metric curves, a **clustree** (how clusters split/merge across resolutions), and a recommended resolution. Click **Apply recommended resolution** (or pick another from the sweep) to store it in the pipeline settings — it appears in the sidebar, is saved to `<output_dir>/leiden_optimizer/pipeline_settings.json`, and travels with the Study Setup config JSON.
+
+### Output files
+
+Written to `<output_dir>/leiden_optimizer/`:
+
+| File | Description |
+|------|-------------|
+| `leiden_resolution_sweep.csv` | Per-resolution metrics and combined score |
+| `pipeline_settings.json` | The applied `leiden_resolution` (restored on app start) |
+
+---
+
 ## Troubleshooting
 
 **ROI sliders not responding**
@@ -145,5 +172,11 @@ The built-in workflow always CPM-normalises before PCA. If you call the function
 
 **App is slow to load a slide scatter**
 The ROI Manager loads `cells.parquet` on demand and subsamples large slides for display. A few seconds for very large sections is normal.
+
+**Leiden clusters track the slide, not cell type**
+Turn on **Harmony batch correction** on the Leiden Optimizer page (default on for multi-slide runs) so clustering runs on the batch-integrated embedding.
+
+**`No module named 'scanpy'` on the Leiden Optimizer page**
+The optimizer stack did not install. Run `conda install -n xenium_sample_pca -c conda-forge scanpy python-igraph leidenalg harmonypy`. The other three pages work without it.
 
 For more, see the [README](README.md#troubleshooting).

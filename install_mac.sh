@@ -185,6 +185,22 @@ pip install streamlit plotly --quiet \
     || fail "pip install failed."
 ok "Web interface installed."
 
+# --- 4c. Leiden Optimizer stack (single-cell clustering) ---------------------
+# Only the 🔎 Leiden Optimizer page needs these; the rest of the app runs
+# without them. A failure here is non-fatal so the core install still succeeds.
+log "Installing the Leiden Optimizer stack (scanpy, igraph, leidenalg, harmonypy) …"
+if conda install -n "$ENV_NAME" -c conda-forge -y \
+    scanpy \
+    python-igraph \
+    leidenalg \
+    harmonypy ; then
+    ok "Leiden Optimizer stack installed."
+else
+    warn "Could not install the Leiden Optimizer stack. The Sample-PCA workflow"
+    warn "still works; to enable step 4 later, run:"
+    warn "  conda install -n ${ENV_NAME} -c conda-forge scanpy python-igraph leidenalg harmonypy"
+fi
+
 # =============================================================================
 # 5. Verification
 # =============================================================================
@@ -214,6 +230,20 @@ for label, mod in required:
     except ImportError as e:
         print(f"  \033[31m✗\033[0m  {label}  —  {e}")
         failures.append(label)
+
+optional = [
+    ("scanpy",    "scanpy"),
+    ("igraph",    "igraph"),
+    ("leidenalg", "leidenalg"),
+    ("harmonypy", "harmonypy"),
+]
+print("\n  Leiden Optimizer stack (optional — step 4 only):")
+for label, mod in optional:
+    try:
+        __import__(mod)
+        print(f"  \033[32m✓\033[0m  {label}")
+    except ImportError:
+        print(f"  \033[33m–\033[0m  {label}  (not installed; the Leiden Optimizer page needs it)")
 
 print("")
 if failures:
