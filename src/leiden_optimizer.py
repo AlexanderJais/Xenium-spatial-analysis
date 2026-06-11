@@ -478,18 +478,31 @@ def optimize_leiden_resolution(
 
         # --- Silhouette score (on subsample) ---
         labels_sub = labels_int[sample_idx]
-        if n_clusters < 2:
+        # The cluster-quality metrics need >=2 distinct labels *in the
+        # subsample*. n_clusters counts clusters on the full data, so an extreme
+        # imbalance can leave the subsample single-label even when n_clusters>=2;
+        # sklearn then raises. Guard on the subsample and degrade to NaN rather
+        # than aborting the whole sweep.
+        n_sub_labels = len(np.unique(labels_sub))
+        if n_clusters < 2 or n_sub_labels < 2:
             sil = -1.0
             ch = 0.0
             db = float("nan")
         else:
-            sil = float(_silhouette_score(
-                embedding, labels_sub, metric="euclidean", sample_size=None,
-            ))
-            # --- Calinski-Harabasz index (on subsample) ---
-            ch = float(_ch_score(embedding, labels_sub))
-            # --- Davies-Bouldin index (on subsample) ---
-            db = float(_db_score(embedding, labels_sub))
+            try:
+                sil = float(_silhouette_score(
+                    embedding, labels_sub, metric="euclidean", sample_size=None,
+                ))
+                # --- Calinski-Harabasz index (on subsample) ---
+                ch = float(_ch_score(embedding, labels_sub))
+                # --- Davies-Bouldin index (on subsample) ---
+                db = float(_db_score(embedding, labels_sub))
+            except ValueError as e:
+                logger.warning(
+                    "Metric computation failed at res=%.2f (%s); recording NaN.",
+                    res, e,
+                )
+                sil, ch, db = -1.0, 0.0, float("nan")
 
         # --- Spatial coherence ---
         if _has_spatial and n_clusters >= 2:
@@ -562,7 +575,12 @@ def optimize_leiden_resolution(
     db_norm = _norm_col(df["davies_bouldin"], invert=True)
     mod_norm = _norm_col(df["modularity"])
 
-    has_spatial_scores = df["spatial_coherence"].notna().all()
+    # Use the spatial-aware weighting whenever spatial coordinates exist and at
+    # least one resolution produced a score. Gating on ``.all()`` instead would
+    # let a single degenerate resolution (n_clusters<2 -> NaN coherence)
+    # silently flip the whole sweep to the non-spatial weights; the NaN rows are
+    # already neutralised by _norm_col's fillna(0.5).
+    has_spatial_scores = _has_spatial and df["spatial_coherence"].notna().any()
     if has_spatial_scores:
         sc_norm = _norm_col(df["spatial_coherence"])
         # Weights: silhouette 30%, CH 15%, DB 15%, spatial coherence 20%, modularity 20%

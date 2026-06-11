@@ -50,6 +50,20 @@ for k, v in {
     if k not in st.session_state:
         st.session_state[k] = v
 
+# Restore a previously applied resolution when this page is opened directly
+# (deep-link), so it doesn't show the 0.6 default until the home page is visited.
+if "_resolution_restored" not in st.session_state:
+    _settings = (Path(st.session_state["output_dir"])
+                 / "leiden_optimizer" / "pipeline_settings.json")
+    if _settings.exists():
+        try:
+            _saved = json.loads(_settings.read_text())
+            if "leiden_resolution" in _saved:
+                st.session_state["leiden_resolution"] = float(_saved["leiden_resolution"])
+        except Exception:
+            pass
+    st.session_state["_resolution_restored"] = True
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -307,6 +321,21 @@ with o2:
 
 batch_key = "slide_id" if (use_harmony and len(selected_slides) > 1) else None
 
+if batch_key is not None:
+    _sel_conds = sorted({s["condition"] for s in selected_slides})
+    # In the usual replicate design each slide is one biological replicate of a
+    # single condition, so correcting on slide_id also absorbs between-replicate
+    # (and thus some between-condition) biology — Korsunsky et al. 2019.
+    if len(_sel_conds) >= 2:
+        st.warning(
+            "⚠️ Harmony's batch key is `slide_id`, and each slide here is a "
+            f"separate biological replicate of its condition ({', '.join(_sel_conds)}). "
+            "Harmony corrects between-replicate variation, which can also remove "
+            "genuine between-condition signal. After the sweep, confirm the "
+            "clusters still show the expected condition composition before "
+            "trusting the recommendation."
+        )
+
 st.divider()
 
 # ── Sweep configuration ───────────────────────────────────────────────────────
@@ -332,10 +361,13 @@ c4, c5 = st.columns(2)
 with c4:
     n_sample = st.number_input(
         "Max cells for metric computation",
-        1000, 200_000, 50_000, 5000,
-        help="Silhouette score is O(n^2). Subsampling speeds up the sweep "
-             "with minimal impact on ranking. CH and DB also use the subsample.",
+        1000, 100_000, 50_000, 5000,
+        help="Silhouette score is O(n^2) in time and memory. Subsampling speeds "
+             "up the sweep with minimal impact on ranking. CH and DB also use "
+             "the subsample.",
     )
+    if n_sample > 50_000:
+        st.caption("⚠️ Silhouette is O(n²) — values above ~50k can be slow and memory-heavy.")
 with c5:
     st.info(
         "**Scoring weights (with spatial data):**\n"
@@ -418,7 +450,11 @@ cluster_assignments = st.session_state.get("optimizer_cluster_assignments")
 if df is not None and best_res is not None:
     st.subheader("Results")
 
-    has_spatial = df["spatial_coherence"].notna().all()
+    # Match the optimizer's spatial-weighting decision: spatial coherence is in
+    # play if any resolution produced a (non-NaN) score. Using .all() here would
+    # disagree with the combined-score weighting whenever a degenerate
+    # single-cluster resolution leaves one NaN.
+    has_spatial = df["spatial_coherence"].notna().any()
     if has_spatial:
         m1, m2, m3, m4, m5, m6 = st.columns(6)
     else:
@@ -580,13 +616,20 @@ if df is not None and best_res is not None:
         if st.button(f"✅ Apply recommended resolution ({best_res:.2f})",
                      type="primary", use_container_width=True, key="apply_best_resolution"):
             st.session_state["leiden_resolution"] = float(best_res)
-            path = _persist_resolution(best_res, Path(st.session_state["output_dir"]))
-            st.success(
-                f"Leiden resolution set to **{best_res:.2f}** and saved to "
-                f"`{path}`. It's now part of the pipeline settings (visible in "
-                "the sidebar and saved with the study config in **Study Setup**)."
-            )
-            st.balloons()
+            try:
+                path = _persist_resolution(best_res, Path(st.session_state["output_dir"]))
+                st.success(
+                    f"Leiden resolution set to **{best_res:.2f}** and saved to "
+                    f"`{path}`. It's now part of the pipeline settings (visible in "
+                    "the sidebar and saved with the study config in **Study Setup**)."
+                )
+                st.balloons()
+            except OSError as e:
+                st.warning(
+                    f"Leiden resolution set to **{best_res:.2f}** for this session, "
+                    f"but it could not be saved to the output directory ({e}). "
+                    "Check the output path in **Study Setup**."
+                )
 
         manual_pick = st.selectbox(
             "Or pick a different resolution from the sweep",
@@ -600,8 +643,14 @@ if df is not None and best_res is not None:
         )
         if st.button("Apply selected resolution", key="apply_manual_resolution"):
             st.session_state["leiden_resolution"] = float(manual_pick)
-            path = _persist_resolution(manual_pick, Path(st.session_state["output_dir"]))
-            st.success(f"Leiden resolution set to **{manual_pick:.2f}** and saved to `{path}`.")
+            try:
+                path = _persist_resolution(manual_pick, Path(st.session_state["output_dir"]))
+                st.success(f"Leiden resolution set to **{manual_pick:.2f}** and saved to `{path}`.")
+            except OSError as e:
+                st.warning(
+                    f"Leiden resolution set to **{manual_pick:.2f}** for this session, "
+                    f"but it could not be saved to the output directory ({e})."
+                )
 else:
     st.info(
         "Configure the preprocessing and sweep parameters above, then click "
