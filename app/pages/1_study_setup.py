@@ -1,9 +1,10 @@
 """
 pages/1_study_setup.py
-Study Setup page — configure the 8 slide folders.
+Study Setup page — configure the slide folders (add or remove as needed).
 """
 
 import json
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -31,6 +32,23 @@ for k, v in {
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+
+def _ensure_keys(slides: list) -> list:
+    """Give every slide a stable unique 'key' so widgets survive add/remove.
+
+    Streamlit widgets are identified by their key. Keying rows on the list
+    index would mean deleting a row shifts every later row's key and makes
+    their stored values jump around. A per-slide uuid keeps each row's
+    widgets glued to that row regardless of insertions or deletions.
+    """
+    for s in slides:
+        if not s.get("key"):
+            s["key"] = uuid.uuid4().hex[:8]
+    return slides
+
+
+st.session_state["slides"] = _ensure_keys(st.session_state["slides"])
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 # Wong 2011 colour-blind-safe palette; blue first, then vermillion
@@ -74,7 +92,7 @@ def _xenium_dir_status(path_str: str) -> tuple[bool, str]:
     return True, "Valid Xenium run directory"
 
 # ── Page ─────────────────────────────────────────────────────────────────────
-page_header("📁 Study Setup", "Configure Xenium run directories for all 8 slides")
+page_header("📁 Study Setup", "Configure the Xenium run directories for your slides")
 st.markdown(
     "Enter the path to each Xenium output directory. "
     "Each folder must contain `cell_feature_matrix/` (with `matrix.mtx.gz`, "
@@ -89,24 +107,44 @@ st.divider()
 
 # ── Slide table ──────────────────────────────────────────────────────────────
 st.subheader("Slide folders")
+st.caption(
+    "Add a row per Xenium run. Conditions are free text — use whatever group "
+    "labels your study needs (the defaults are AGED / ADULT)."
+)
+
+# Header row
+h_cond, h_id, h_path, h_status, h_del = st.columns([1.3, 1.5, 4.4, 1.3, 0.6])
+h_cond.markdown("**Condition**")
+h_id.markdown("**Slide ID**")
+h_path.markdown("**Run directory**")
+h_status.markdown("**Status**")
 
 slides = st.session_state["slides"]
+delete_key = None  # set if a row's delete button is pressed; processed after loop
 
 for i, slide in enumerate(slides):
-    cond   = slide["condition"]
-    colour = CONDITION_COLOURS.get(cond, "#888")
-    badge  = f'<span style="background:{colour};color:white;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:bold">{cond}</span>'
+    row_key = slide["key"]
 
-    col_badge, col_id, col_path, col_status = st.columns([1, 1.5, 5, 1.5])
+    col_cond, col_id, col_path, col_status, col_del = st.columns([1.3, 1.5, 4.4, 1.3, 0.6])
 
-    with col_badge:
-        st.markdown(badge + "<br>", unsafe_allow_html=True)
+    with col_cond:
+        new_cond = st.text_input(
+            "Condition",
+            value=slide["condition"],
+            key=f"cond_{row_key}",
+            label_visibility="collapsed",
+        )
+        slides[i]["condition"] = new_cond
+        st.markdown(
+            f'<div style="height:4px;border-radius:2px;background:{CONDITION_COLOURS.get(new_cond, "#888")};margin-top:-6px"></div>',
+            unsafe_allow_html=True,
+        )
 
     with col_id:
         new_id = st.text_input(
             "Slide ID",
             value=slide["slide_id"],
-            key=f"slide_id_{i}",
+            key=f"slide_id_{row_key}",
             label_visibility="collapsed",
         )
         slides[i]["slide_id"] = new_id
@@ -115,8 +153,8 @@ for i, slide in enumerate(slides):
         new_path = st.text_input(
             "Run directory",
             value=slide["run_dir"],
-            placeholder=f"/path/to/xenium_run_{cond.lower()}_{i%4+1}",
-            key=f"run_dir_{i}",
+            placeholder="/path/to/xenium_run",
+            key=f"run_dir_{row_key}",
             label_visibility="collapsed",
         )
         slides[i]["run_dir"] = new_path
@@ -130,6 +168,10 @@ for i, slide in enumerate(slides):
                 st.error(msg[:40])
         else:
             st.caption("—")
+
+    with col_del:
+        if st.button("🗑", key=f"del_slide_{row_key}", help="Remove this slide"):
+            delete_key = row_key
 
     # Show gene count if valid
     if slide["run_dir"].strip():
@@ -187,21 +229,48 @@ for i, slide in enumerate(slides):
             except Exception as _e:
                 st.caption(f"Could not read gene counts: {_e}")
 
-    if i == 3:  # separator between AGED and ADULT
-        st.divider()
+# Apply a deletion requested above, then rerun so the table redraws.
+if delete_key is not None:
+    if len(slides) <= 1:
+        st.warning("At least one slide row is required.")
+    else:
+        st.session_state["slides"] = [s for s in slides if s["key"] != delete_key]
+        # Drop the deleted row's widget state so its values can't leak elsewhere.
+        for prefix in ("cond_", "slide_id_", "run_dir_", "del_slide_"):
+            st.session_state.pop(f"{prefix}{delete_key}", None)
+        st.rerun()
 
 st.session_state["slides"] = slides
 
+# ── Add slide ─────────────────────────────────────────────────────────────────
+if st.button("➕ Add slide", use_container_width=False):
+    default_cond = slides[-1]["condition"] if slides else "AGED"
+    slides.append({
+        "slide_id" : f"Sample_{len(slides) + 1}",
+        "condition": default_cond,
+        "run_dir"  : "",
+        "key"      : uuid.uuid4().hex[:8],
+    })
+    st.session_state["slides"] = slides
+    st.rerun()
+
 # ── Summary banner ────────────────────────────────────────────────────────────
 st.divider()
-n_ok = sum(1 for s in slides if _xenium_dir_status(s["run_dir"])[0])
-n_aged  = sum(1 for s in slides if s["condition"] == "AGED"  and _xenium_dir_status(s["run_dir"])[0])
-n_adult = sum(1 for s in slides if s["condition"] == "ADULT" and _xenium_dir_status(s["run_dir"])[0])
+n_total = len(slides)
+valid_flags = [_xenium_dir_status(s["run_dir"])[0] for s in slides]
+n_ok = sum(valid_flags)
 
-if n_ok == 8:
-    st.success(f"✅ All 8 slides configured ({n_aged} AGED, {n_adult} ADULT)")
+by_cond: dict[str, int] = {}
+for s, ok in zip(slides, valid_flags):
+    if ok:
+        by_cond[s["condition"]] = by_cond.get(s["condition"], 0) + 1
+cond_breakdown = ", ".join(f"{n} {c}" for c, n in sorted(by_cond.items())) or "—"
+
+if n_total > 0 and n_ok == n_total:
+    st.success(f"✅ All {n_total} slides configured ({cond_breakdown})")
 elif n_ok > 0:
-    st.warning(f"⚠️ {n_ok}/8 slides configured — {8-n_ok} still need paths")
+    st.warning(f"⚠️ {n_ok}/{n_total} slides configured ({cond_breakdown}) — "
+               f"{n_total - n_ok} still need paths")
 else:
     st.error("No valid slide directories entered yet")
 
@@ -280,7 +349,7 @@ with col_load:
         try:
             cfg = json.load(uploaded)
             if "slides" in cfg:
-                st.session_state["slides"] = cfg["slides"]
+                st.session_state["slides"] = _ensure_keys(cfg["slides"])
             for k in ["base_panel_csv", "output_dir", "roi_cache_dir"]:
                 if k in cfg:
                     st.session_state[k] = cfg[k]

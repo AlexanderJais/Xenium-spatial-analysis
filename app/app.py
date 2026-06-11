@@ -4,9 +4,9 @@ app.py
 Xenium Sample PCA — streamlined local web interface.
 
 Three steps only:
-    1. Study Setup   — point to the 8 Xenium output directories
+    1. Study Setup   — point to the Xenium output directories
     2. ROI Manager   — frame the MBH region per slide
-    3. Sample PCA    — pseudobulk PCA of the 8 samples (Nature-style)
+    3. Sample PCA    — pseudobulk PCA across the samples (Nature-style)
 
 Run with:  streamlit run app/app.py
 """
@@ -154,7 +154,7 @@ with st.sidebar:
 # ── Home ────────────────────────────────────────────────────────────────────
 page_header(
     "Xenium Sample PCA",
-    "Pseudobulk PCA  ·  AGED vs ADULT mouse brain  ·  Mediobasal hypothalamus  ·  4 + 4 replicates",
+    "Pseudobulk PCA  ·  AGED vs ADULT mouse brain  ·  Mediobasal hypothalamus  ·  biological replicates",
 )
 
 col1, col2, col3 = st.columns(3)
@@ -171,7 +171,7 @@ st.markdown("#### Workflow")
 STEPS = [
     (1, "Study Setup", "Enter the path to each Xenium run folder; a green tick confirms it is valid. Save/load the full config as JSON."),
     (2, "ROI Manager", "Frame the mediobasal hypothalamus on each section with the interactive scatter; a dashed orange ellipse marks the atlas hint."),
-    (3, "Sample PCA",  "Pseudobulk each slide and run PCA across the 8 samples — see how samples and the AGED/ADULT groups separate."),
+    (3, "Sample PCA",  "Pseudobulk each slide and run PCA across the samples — see how samples and the condition groups separate."),
 ]
 items = []
 for step_n, title, desc in STEPS:

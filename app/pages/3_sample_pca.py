@@ -1,6 +1,6 @@
 """
 pages/3_sample_pca.py
-Sample PCA — pseudobulk PCA across the 8 samples.
+Sample PCA — pseudobulk PCA across the selected samples.
 
 Loads the configured Xenium slides, applies the saved MBH ROIs, collapses
 each slide into a pseudobulk profile, and runs PCA across the samples.
