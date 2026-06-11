@@ -18,6 +18,12 @@ Outputs a single concatenated AnnData with:
   .obs['roi_name']    : ROI label (e.g. "MBH") if ROI was applied
   .var['panel_type']  : "base" | "custom"
   .var['cell_type_annotation'] : from Xenium metadata CSV
+  .var['zero_filled_any']      : gene zero-filled in >=1 slide
+  .var['n_slides_zero_filled'] : number of slides zero-filled for the gene
+  .varm['zero_filled_by_slide']: (genes x slides) bool, per-slide zero-fill map
+                                 (the per-slide detail; var['zero_filled'] is
+                                 NOT carried on the combined object because a
+                                 single column cannot hold per-slide values)
 """
 
 import logging
@@ -396,6 +402,20 @@ class MultiSlideLoader:
                     "Spatial figures will be unavailable."
                 )
 
+        # Rebuild per-slide zero-fill provenance.
+        #
+        # var["zero_filled"] is a PER-SLIDE flag: a custom gene can be
+        # zero-filled in one slide yet genuinely measured in another. The
+        # other panel columns (panel_type, slides_present, n_slides_present,
+        # cell_type_annotation, ...) are gene-level and identical across
+        # slides, so ad.concat(merge="first") is correct for them — but for
+        # the per-slide flag "first" silently keeps only slide 0's values and
+        # mislabels every other slide. We reconstruct the full (genes x
+        # slides) map from the per-slide objects, store it in varm, and expose
+        # study-level aggregates in var; the misleading single-slide column is
+        # dropped so downstream DGE cannot read it by mistake.
+        self._attach_zero_fill_map(combined, adatas)
+
         # Store run-level summary in uns
         combined.uns["study"] = {
             "conditions"  : self.manifest.conditions,
@@ -412,6 +432,55 @@ class MultiSlideLoader:
             "  ".join(f"{k}={v}" for k, v in sorted(n_by_cond.items())),
         )
         return combined
+
+    def _attach_zero_fill_map(
+        self,
+        combined: ad.AnnData,
+        adatas: list[ad.AnnData],
+    ) -> None:
+        """
+        Replace the per-slide ``var['zero_filled']`` flag — collapsed to a
+        single slide by ``ad.concat(merge='first')`` — with a correct,
+        study-wide representation.
+
+        Adds to ``combined``:
+            ``varm['zero_filled_by_slide']`` : DataFrame (genes x slides) bool,
+                the full per-slide zero-fill provenance (True = that slide got
+                a zero-filled column for this gene).
+            ``var['zero_filled_any']``       : bool, gene zero-filled in >=1 slide.
+            ``var['n_slides_zero_filled']``  : int, number of slides zero-filled.
+
+        and drops the misleading single-slide ``var['zero_filled']``. No-op if
+        the per-slide objects do not carry the flag (e.g. unharmonised input).
+        """
+        if not all("zero_filled" in a.var.columns for a in adatas):
+            return
+
+        slide_ids = self.manifest.slide_ids
+        zf_by_slide = pd.DataFrame(
+            {
+                sid: (
+                    a.var["zero_filled"]
+                    .reindex(combined.var_names)
+                    .fillna(False)
+                    .astype(bool)
+                )
+                for a, sid in zip(adatas, slide_ids)
+            },
+            index=combined.var_names,
+        )
+
+        combined.varm["zero_filled_by_slide"] = zf_by_slide
+        combined.var["zero_filled_any"] = zf_by_slide.any(axis=1).values
+        combined.var["n_slides_zero_filled"] = zf_by_slide.sum(axis=1).astype(int).values
+        combined.var.drop(columns=["zero_filled"], inplace=True, errors="ignore")
+
+        n_zf_genes = int(combined.var["zero_filled_any"].sum())
+        logger.info(
+            "Zero-fill provenance: %d/%d genes zero-filled in >=1 slide "
+            "(per-slide map in varm['zero_filled_by_slide']).",
+            n_zf_genes, combined.n_vars,
+        )
 
     # ------------------------------------------------------------------
     # Access to intermediate results
