@@ -325,9 +325,8 @@ def plot_sample_pca(
     """
     Scatter of samples in PC space, coloured by group and labelled by id.
 
-    A convex hull (filled, translucent) is drawn per group so the AGED
-    vs ADULT separation is easy to read.  Axis labels report the
-    fraction of variance explained by each PC.
+    Each point is one individual sample (pseudobulk replicate); axis
+    labels report the fraction of variance explained by each PC.
     """
     import matplotlib.pyplot as plt
 
@@ -336,7 +335,18 @@ def plot_sample_pca(
 
     scores = pb.obsm["X_pca"]
     vr = pb.uns["pca"]["variance_ratio"]
+    n_pc = scores.shape[1]
     ix, iy = pc_x - 1, pc_y - 1
+
+    # With only two samples PCA yields a single non-trivial component, so the
+    # requested second axis (PC2) does not exist. Fall back to a flat y=0 axis
+    # so the samples can still be displayed along PC1.
+    xs = scores[:, ix]
+    ys = scores[:, iy] if iy < n_pc else np.zeros(scores.shape[0])
+    y_label = (
+        f"PC{pc_y} ({vr[iy] * 100:.1f}%)" if iy < n_pc
+        else f"PC{pc_y} (n/a — only {n_pc} component)"
+    )
 
     conds = (
         pb.obs[condition_key].astype(str).values
@@ -350,21 +360,20 @@ def plot_sample_pca(
     for cond in uniq:
         m = conds == cond
         ax.scatter(
-            scores[m, ix], scores[m, iy],
+            xs[m], ys[m],
             s=55, c=colour[cond], edgecolors="black", linewidths=0.5,
             label=cond, zorder=3,
         )
-        _draw_group_hull(ax, scores[m, ix], scores[m, iy], colour[cond])
 
     for i, sid in enumerate(pb.obs_names):
         ax.annotate(
-            sid, (scores[i, ix], scores[i, iy]),
+            sid, (xs[i], ys[i]),
             xytext=(3, 3), textcoords="offset points",
             fontsize=5.5, zorder=4,
         )
 
     ax.set_xlabel(f"PC{pc_x} ({vr[ix] * 100:.1f}%)")
-    ax.set_ylabel(f"PC{pc_y} ({vr[iy] * 100:.1f}%)")
+    ax.set_ylabel(y_label)
     ax.set_title("Sample-level PCA (pseudobulk)")
     ax.axhline(0, color="grey", lw=0.4, ls="--", zorder=1)
     ax.axvline(0, color="grey", lw=0.4, ls="--", zorder=1)
@@ -494,6 +503,7 @@ def sample_level_pca_analysis(
     condition_key: str = "condition",
     n_top_genes: int = 0,
     scale_genes: bool = False,
+    base_panel_only: bool = True,
     fmt: str = "pdf",
     dpi: int = 300,
     random_state: int = 42,
@@ -501,8 +511,18 @@ def sample_level_pca_analysis(
     """
     Run the full sample-level PCA workflow and save figures + tables.
 
-    Steps: pseudobulk -> library-size normalise -> PCA -> scatter,
-    correlation heatmap, scree plot, and a CSV of PC coordinates.
+    Steps: (optionally restrict to base panel) -> pseudobulk ->
+    library-size normalise -> PCA -> scatter, correlation heatmap, scree
+    plot, and a CSV of PC coordinates.
+
+    Parameters
+    ----------
+    base_panel_only:
+        If True (default), restrict the analysis to the shared Xenium base
+        panel genes (``var['panel_type'] == 'base'``) before pseudobulking,
+        dropping every add-on / custom gene.  This keeps the PCA comparable
+        across slides that carry different add-on panels.  Set False to use
+        whichever gene set the loader produced (base + custom).
 
     Returns the pseudobulk AnnData (with PCA in ``.obsm['X_pca']``) so
     the caller can do further inspection.
@@ -513,6 +533,9 @@ def sample_level_pca_analysis(
     logger.info("=" * 60)
     logger.info("Sample-level PCA  |  sample_key='%s', group='%s'", sample_key, condition_key)
     logger.info("=" * 60)
+
+    if base_panel_only:
+        adata = _restrict_to_base_panel(adata)
 
     pb = pseudobulk_samples(adata, sample_key=sample_key, condition_key=condition_key)
     pb = normalize_pseudobulk(pb)
@@ -550,6 +573,45 @@ def sample_level_pca_analysis(
 # Internal helpers
 # ===========================================================================
 
+def _restrict_to_base_panel(adata: ad.AnnData) -> ad.AnnData:
+    """
+    Subset an AnnData to the shared Xenium base panel genes.
+
+    Relies on the ``var['panel_type']`` column written by
+    :class:`src.panel_registry.PanelRegistry` during harmonisation, where
+    base-panel genes are tagged ``'base'`` and add-on genes ``'custom'`` /
+    ``'custom_shared'`` / ``'custom_unique'``.  Add-on genes are dropped so
+    the PCA only uses the 247 genes common to every slide.
+
+    If the column is absent (e.g. an AnnData not produced by the loader)
+    the input is returned unchanged with a warning.
+    """
+    if "panel_type" not in adata.var.columns:
+        logger.warning(
+            "base_panel_only requested but var['panel_type'] is missing; "
+            "using all %d genes. Load slides via MultiSlideLoader to enable "
+            "base-panel restriction.", adata.n_vars,
+        )
+        return adata
+
+    panel = adata.var["panel_type"].astype(str)
+    is_base = (panel == "base").values
+    n_base = int(is_base.sum())
+    if n_base == 0:
+        logger.warning(
+            "base_panel_only requested but no genes are tagged 'base'; "
+            "using all %d genes.", adata.n_vars,
+        )
+        return adata
+
+    n_dropped = adata.n_vars - n_base
+    logger.info(
+        "Restricting to base panel: %d base genes kept, %d add-on genes dropped.",
+        n_base, n_dropped,
+    )
+    return adata[:, is_base].copy()
+
+
 def _get_counts(adata: ad.AnnData, layer: str) -> np.ndarray | sp.spmatrix:
     """Return the raw count matrix from a layer, falling back to .X."""
     if layer in adata.layers:
@@ -571,21 +633,6 @@ def _condition_colours(uniq, named: dict, fallback: list) -> dict:
     for i, c in enumerate(uniq):
         out[c] = named.get(c, fallback[i % len(fallback)])
     return out
-
-
-def _draw_group_hull(ax, xs, ys, colour):
-    """Fill the convex hull of a group's points (no-op for < 3 points)."""
-    if len(xs) < 3:
-        return
-    try:
-        from scipy.spatial import ConvexHull
-        pts = np.column_stack([xs, ys])
-        hull = ConvexHull(pts)
-        poly = pts[hull.vertices]
-        ax.fill(poly[:, 0], poly[:, 1], color=colour, alpha=0.12, zorder=2, lw=0)
-    except Exception:
-        # Degenerate (collinear) point sets raise QhullError; skip the hull.
-        pass
 
 
 def _spearman_corr(X: np.ndarray) -> np.ndarray:

@@ -6,16 +6,23 @@ load the slides, apply the per-slide MBH ROIs, and run a
 sample-level (pseudobulk) PCA.
 
 This answers the question that has to come *before* any cell-level
-clustering or DGE: do the 8 samples separate by group (AGED vs
+clustering or DGE: do the samples separate by group (AGED vs
 ADULT), and are there outlier slides we should be aware of?
 
 Usage
 -----
-    # Default: load all 8 slides, apply saved ROIs, run sample PCA
+    # Default: load all configured slides, apply saved ROIs, run sample PCA
+    # on the shared base panel only
     python run_sample_pca.py
+
+    # Run on just two samples
+    python run_sample_pca.py --samples AGED_1 ADULT_1
 
     # Ignore ROIs and use whole sections
     python run_sample_pca.py --no-roi
+
+    # Include the add-on (custom) genes as well as the base panel
+    python run_sample_pca.py --all-genes
 
     # Restrict PCA to the 200 most variable genes and z-score them
     python run_sample_pca.py --n-top-genes 200 --scale-genes
@@ -33,6 +40,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -71,6 +79,8 @@ def main(
     min_slides: int = 2,
     n_top_genes: int = 0,
     scale_genes: bool = False,
+    base_panel_only: bool = True,
+    samples: Optional[list[str]] = None,
     fmt: str = "pdf",
 ) -> None:
     logging.basicConfig(
@@ -80,25 +90,49 @@ def main(
     )
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. Manifest of all slides.
+    # 1. Select which slides to analyse. `samples` lets you run on a subset
+    #    (e.g. 2 of the configured slides); default is every slide in SLIDES.
+    if samples:
+        known = {s["slide_id"] for s in SLIDES}
+        unknown = [s for s in samples if s not in known]
+        if unknown:
+            raise SystemExit(
+                f"Unknown sample id(s): {unknown}. Available: {sorted(known)}"
+            )
+        selected = [s for s in SLIDES if s["slide_id"] in set(samples)]
+    else:
+        selected = list(SLIDES)
+
+    if len(selected) < 2:
+        raise SystemExit(
+            f"Sample PCA needs at least 2 samples; got {len(selected)}. "
+            "Select more with --samples."
+        )
+
+    logger.info(
+        "Running sample PCA on %d sample(s): %s",
+        len(selected), ", ".join(s["slide_id"] for s in selected),
+    )
+
+    # 2. Manifest of the selected slides.
     manifest = SlideManifest()
-    for s in SLIDES:
+    for s in selected:
         manifest.add(
             slide_id=s["slide_id"], condition=s["condition"],
             run_dir=s["run_dir"], replicate_id=s["slide_id"],
         )
 
-    # 2. Panel registry + optional ROI selector.
+    # 3. Panel registry + optional ROI selector.
     registry = PanelRegistry(BASE_PANEL)
     roi_selector = ROISelector(cache_dir=ROI_CACHE) if use_roi else None
-    if use_roi and not any(roi_selector.has_roi(s["slide_id"]) for s in SLIDES):
+    if use_roi and not any(roi_selector.has_roi(s["slide_id"]) for s in selected):
         logger.warning(
             "ROI requested but no saved ROIs found in %s/. Frame ROIs first "
             "in the web app's ROI Manager, or pass --no-roi to use whole sections.",
             ROI_CACHE,
         )
 
-    # 3. Load + harmonise + ROI-filter + concatenate.
+    # 4. Load + harmonise + ROI-filter + concatenate.
     loader = MultiSlideLoader(
         manifest=manifest,
         panel_registry=registry,
@@ -110,7 +144,7 @@ def main(
     )
     adata = loader.load_all()
 
-    # 4. Sample-level PCA.
+    # 5. Sample-level PCA.
     sample_level_pca_analysis(
         adata,
         output_dir=OUTPUT_DIR,
@@ -118,6 +152,7 @@ def main(
         condition_key="condition",
         n_top_genes=n_top_genes,
         scale_genes=scale_genes,
+        base_panel_only=base_panel_only,
         fmt=fmt,
     )
 
@@ -131,6 +166,10 @@ if __name__ == "__main__":
                    choices=["intersection", "partial_union", "union"])
     p.add_argument("--min-slides", type=int, default=2,
                    help="Min slides a custom gene must appear in (partial_union).")
+    p.add_argument("--samples", nargs="+", metavar="SLIDE_ID",
+                   help="Slide IDs to include (>=2). Default: all configured slides.")
+    p.add_argument("--all-genes", action="store_true",
+                   help="Include add-on (custom) genes too. Default: base panel only.")
     p.add_argument("--n-top-genes", type=int, default=0,
                    help="Restrict PCA to N most variable genes (0 = all genes).")
     p.add_argument("--scale-genes", action="store_true",
@@ -144,5 +183,7 @@ if __name__ == "__main__":
         min_slides=args.min_slides,
         n_top_genes=args.n_top_genes,
         scale_genes=args.scale_genes,
+        base_panel_only=not args.all_genes,
+        samples=args.samples,
         fmt=args.fmt,
     )

@@ -96,19 +96,45 @@ st.markdown(
     f"**{n_roi}/{len(valid_slides)}** ROIs saved."
 )
 
+# ── Sample selection ────────────────────────────────────────────────────────
+# Choose how many / which samples to include. The PCA runs on whatever is
+# selected here (minimum 2), so you can compare just two samples or all of them.
+selected_ids = st.multiselect(
+    "Samples to include in the PCA",
+    options=slide_ids,
+    default=slide_ids,
+    help="Pick the samples to analyse. At least 2 are required; the rest are "
+         "ignored for this run.",
+)
+selected_slides = [s for s in valid_slides if s["slide_id"] in set(selected_ids)]
+
+if len(selected_slides) < 2:
+    st.warning("Select at least 2 samples to run the PCA.")
+    st.stop()
+
+n_cond_sel = len({s["condition"] for s in selected_slides})
+st.caption(
+    f"Selected **{len(selected_slides)}** sample(s) across **{n_cond_sel}** group(s)."
+)
+
 # ── Options ───────────────────────────────────────────────────────────────────
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     use_roi = st.toggle("Apply MBH ROIs", value=(n_roi > 0),
                         help="Restrict each slide to its saved ROI before pseudobulk.")
-    if use_roi and n_roi < len(valid_slides):
+    if use_roi and n_roi < len(selected_slides):
         st.caption(f"⚠️ Only {n_roi}/{len(valid_slides)} ROIs saved — slides without one use the whole section.")
 with c2:
+    base_panel_only = st.toggle("Base panel only", value=True,
+                                help="Restrict the PCA to the shared Xenium base panel "
+                                     "(247 genes), dropping per-slide add-on genes so all "
+                                     "samples are compared on the same gene set.")
+with c3:
     n_top_genes = st.number_input("Top variable genes (0 = all)", min_value=0, max_value=5000,
                                   value=0, step=50,
                                   help="Restrict PCA to the N most variable genes. 0 uses all "
                                        "genes (recommended for targeted Xenium panels).")
-with c3:
+with c4:
     scale_genes = st.toggle("Z-score genes", value=False,
                             help="Standardise each gene before PCA. Off by default "
                                  "(log1p already stabilises variance).")
@@ -120,9 +146,9 @@ run = st.button("▶ Run sample PCA", type="primary", use_container_width=True)
 if run:
     try:
         with st.spinner("Loading slides, applying ROIs, and pseudobulking …"):
-            run_dirs   = tuple(str(s["run_dir"]) for s in valid_slides)
-            sids       = tuple(slide_ids)
-            conditions = tuple(s["condition"] for s in valid_slides)
+            run_dirs   = tuple(str(s["run_dir"]) for s in selected_slides)
+            sids       = tuple(s["slide_id"] for s in selected_slides)
+            conditions = tuple(s["condition"] for s in selected_slides)
             roi_sig    = _roi_signature(sids, st.session_state["roi_cache_dir"])
 
             adata = _load_combined(
@@ -143,6 +169,7 @@ if run:
                 adata, output_dir=out_root,
                 sample_key="replicate", condition_key="condition",
                 n_top_genes=int(n_top_genes), scale_genes=bool(scale_genes),
+                base_panel_only=bool(base_panel_only),
                 fmt="pdf",
             )
             # Also render PNGs for inline display.
