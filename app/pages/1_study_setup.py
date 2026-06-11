@@ -29,6 +29,7 @@ for k, v in {
     "base_panel_csv": str(Path(__file__).parent.parent.parent / "data" / "Xenium_mBrain_v1_1_metadata.csv"),
     "output_dir"    : str(Path.home() / "xenium_sample_pca_output"),
     "roi_cache_dir" : str(Path(__file__).parent.parent.parent / "roi_cache"),
+    "leiden_resolution": 0.6,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -346,6 +347,7 @@ with col_save:
             "base_panel_csv": st.session_state["base_panel_csv"],
             "output_dir"    : st.session_state["output_dir"],
             "roi_cache_dir" : st.session_state["roi_cache_dir"],
+            "leiden_resolution": st.session_state.get("leiden_resolution", 0.6),
         }
         cfg_str = json.dumps(cfg, indent=2)
         st.download_button(
@@ -365,7 +367,7 @@ with col_load:
             cfg = json.load(uploaded)
             if "slides" in cfg:
                 st.session_state["slides"] = _ensure_keys(cfg["slides"])
-            for k in ["base_panel_csv", "output_dir", "roi_cache_dir"]:
+            for k in ["base_panel_csv", "output_dir", "roi_cache_dir", "leiden_resolution"]:
                 if k in cfg:
                     st.session_state[k] = cfg[k]
             st.success("Configuration loaded — refresh the page to see updated paths.")

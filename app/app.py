@@ -3,14 +3,16 @@ app.py
 ------
 Xenium Sample PCA — streamlined local web interface.
 
-Three steps only:
-    1. Study Setup   — point to the Xenium output directories
-    2. ROI Manager   — frame the MBH region per slide
-    3. Sample PCA    — pseudobulk PCA across the samples (Nature-style)
+Four steps:
+    1. Study Setup      — point to the Xenium output directories
+    2. ROI Manager      — frame the MBH region per slide
+    3. Sample PCA       — pseudobulk PCA across the samples (Nature-style)
+    4. Leiden Optimizer — sweep clustering resolutions and pick the best
 
 Run with:  streamlit run app/app.py
 """
 
+import json
 import streamlit as st
 from pathlib import Path
 
@@ -42,10 +44,30 @@ DEFAULTS = {
     "panel_mode"    : "partial_union",
     "min_slides"    : 2,
     "roi_polygons"  : {},
+    "leiden_resolution": 0.6,
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+
+# Restore a previously applied Leiden resolution so the optimizer's choice
+# survives an app restart (the optimizer page persists it to this file).
+def _load_persisted_resolution() -> None:
+    settings_path = (Path(st.session_state["output_dir"])
+                     / "leiden_optimizer" / "pipeline_settings.json")
+    if not settings_path.exists():
+        return
+    try:
+        saved = json.loads(settings_path.read_text())
+        if "leiden_resolution" in saved:
+            st.session_state["leiden_resolution"] = float(saved["leiden_resolution"])
+    except Exception:
+        pass
+
+if "_resolution_restored" not in st.session_state:
+    _load_persisted_resolution()
+    st.session_state["_resolution_restored"] = True
 
 
 # ── Derived state ────────────────────────────────────────────────────────────
@@ -62,6 +84,8 @@ n_roi      = _rois_saved()
 panel_ok   = Path(st.session_state["base_panel_csv"]).exists()
 pca_done   = (Path(st.session_state["output_dir"]) / "sample_pca"
               / "sample_pca_scatter.pdf").exists()
+leiden_done = (Path(st.session_state["output_dir"]) / "leiden_optimizer"
+               / "pipeline_settings.json").exists()
 
 
 def _current_step() -> int:
@@ -69,13 +93,15 @@ def _current_step() -> int:
         return 1
     if not n_roi:
         return 2
-    return 3
+    if not pca_done:
+        return 3
+    return 4
 
 current_step = _current_step()
 
 
 def _step_state(step_n: int) -> str:
-    done_map = {1: configured > 0, 2: n_roi > 0, 3: pca_done}
+    done_map = {1: configured > 0, 2: n_roi > 0, 3: pca_done, 4: leiden_done}
     if done_map.get(step_n):
         return "done"
     return "current" if step_n == current_step else "pending"
@@ -97,7 +123,7 @@ with st.sidebar:
 
     st.divider()
 
-    STEP_LABELS = ["Study Setup", "ROI Manager", "Sample PCA"]
+    STEP_LABELS = ["Study Setup", "ROI Manager", "Sample PCA", "Leiden Optimizer"]
     steps_html = []
     for i, label in enumerate(STEP_LABELS, 1):
         state = _step_state(i)
@@ -140,6 +166,10 @@ with st.sidebar:
             <span>ROIs defined</span> {_ok(n_roi > 0)}</div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <span>PCA complete</span> {_ok(pca_done)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Leiden resolution</span>
+            <span class="pill" style="background:rgba(144,200,240,0.18);color:#90C8F0;">
+                {st.session_state['leiden_resolution']:.2f}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -157,13 +187,15 @@ page_header(
     "Pseudobulk PCA  ·  AGED vs ADULT mouse brain  ·  Mediobasal hypothalamus  ·  biological replicates",
 )
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("Slides configured", f"{configured} / {n_slides}")
 with col2:
     st.metric("ROIs saved", f"{n_roi} / {n_slides}")
 with col3:
     st.metric("Sample PCA", "ready" if pca_done else "—")
+with col4:
+    st.metric("Leiden resolution", f"{st.session_state['leiden_resolution']:.2f}")
 
 st.divider()
 
@@ -172,6 +204,7 @@ STEPS = [
     (1, "Study Setup", "Enter the path to each Xenium run folder; a green tick confirms it is valid. Save/load the full config as JSON."),
     (2, "ROI Manager", "Frame the mediobasal hypothalamus on each section with the interactive scatter; a dashed orange ellipse marks the atlas hint."),
     (3, "Sample PCA",  "Pseudobulk each slide and run PCA across the samples — see how samples and the condition groups separate."),
+    (4, "Leiden Optimizer", "Sweep Leiden resolutions on the cells, score each with silhouette / modularity / spatial coherence, and apply the best to the pipeline settings."),
 ]
 items = []
 for step_n, title, desc in STEPS:
@@ -203,8 +236,10 @@ if items:
 st.markdown('<ol style="list-style:none;padding:0;margin:0;">' + "\n".join(items) + "</ol>",
             unsafe_allow_html=True)
 
-CTA_PAGES = {1: "pages/1_study_setup.py", 2: "pages/2_roi_manager.py", 3: "pages/3_sample_pca.py"}
-CTA_LABELS = {1: "→ Configure slides", 2: "→ Draw ROIs", 3: "→ Run sample PCA"}
+CTA_PAGES = {1: "pages/1_study_setup.py", 2: "pages/2_roi_manager.py",
+             3: "pages/3_sample_pca.py", 4: "pages/4_leiden_optimizer.py"}
+CTA_LABELS = {1: "→ Configure slides", 2: "→ Draw ROIs",
+              3: "→ Run sample PCA", 4: "→ Optimize Leiden resolution"}
 st.markdown("<br>", unsafe_allow_html=True)
 try:
     st.page_link(CTA_PAGES[current_step], label=CTA_LABELS[current_step], icon="▶")

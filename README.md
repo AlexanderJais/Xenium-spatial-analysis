@@ -59,13 +59,14 @@ streamlit run app/app.py
 
 Or double-click `start_app.command` in Finder. Your browser opens at http://localhost:8501.
 
-The app has exactly three steps:
+The app has four steps:
 
 | Step | Page | Purpose |
 |------|------|---------|
 | 1 | **📁 Study Setup** | Enter paths to the 8 Xenium output directories. A green tick confirms each is valid and shows its gene/cell counts. Save/load the full config as JSON. |
 | 2 | **🗺️ ROI Manager** | Interactive Plotly scatter per slide. Use the four edge sliders to frame the MBH bounding rectangle; the cell count updates live. A dashed orange ellipse marks the atlas hint. Manual coordinate entry is available as a fallback. ROIs are saved to `roi_cache/` and reused automatically. |
 | 3 | **📊 Sample PCA** | Loads the slides, applies the saved ROIs, pseudobulks each sample, and runs PCA across them. Shows the Nature-style PCA scatter (coloured by group), a hierarchically-clustered sample correlation heatmap, and a scree plot — inline, with PDF/CSV downloads. |
+| 4 | **🔎 Leiden Optimizer** | Loads and ROI-filters the same slides, builds a single-cell PCA + KNN graph, then sweeps a grid of Leiden resolutions. Each resolution is scored on silhouette, Calinski-Harabasz, Davies-Bouldin, spatial coherence, and modularity; a weighted combined score recommends the best. A clustree shows how clusters split/merge, and one click applies the chosen resolution to the pipeline settings (persisted to the output dir and the study-config JSON). Needs `scanpy`, `igraph`, and `leidenalg`. |
 
 ---
 
