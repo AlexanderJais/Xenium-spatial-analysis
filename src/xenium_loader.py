@@ -179,6 +179,20 @@ def load_xenium_run(
     var = features.set_index("gene_name")
     var.index.name = "gene_name"
 
+    # Warn on duplicate gene symbols before make_unique suffixes them
+    # ("Foo" -> "Foo-1"). A suffixed copy no longer matches the base panel by
+    # name, so PanelRegistry would silently classify it as a custom gene.
+    # Surfacing it lets the user notice rather than chase a phantom gene.
+    dup_names = var.index[var.index.duplicated()].unique().tolist()
+    if dup_names:
+        logger.warning(
+            "Slide '%s': %d duplicate gene symbol(s) in features.tsv.gz "
+            "(%s%s); make_unique will suffix the copies, which PanelRegistry "
+            "then treats as custom genes.",
+            slide_id, len(dup_names),
+            ", ".join(map(str, dup_names[:10])), " ..." if len(dup_names) > 10 else "",
+        )
+
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.obs_names = barcodes.tolist()
     adata.var_names_make_unique()

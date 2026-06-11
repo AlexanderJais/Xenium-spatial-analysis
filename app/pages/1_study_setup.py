@@ -194,14 +194,29 @@ for i, slide in enumerate(slides):
                 n_blank     = int(type_counts.get("Blank Codeword", 0))
                 n_neg_cw    = int(type_counts.get("Negative Control Codeword", 0))
                 n_neg_probe = int(type_counts.get("Negative Control Probe", 0))
-                # Derive base panel count from the CSV rather than hardcoding 247.
-                # Fall back to 247 only if the CSV cannot be read.
+                # Classify the slide's RNA genes by NAME against the base panel
+                # (matching PanelRegistry), rather than subtracting a fixed base
+                # count — which misreports whenever a slide is missing base genes
+                # or carries extra ones. Fall back to the count-difference only
+                # if the base panel CSV cannot be read.
+                rna_genes = set(
+                    feats.loc[feats["feature_type"] == "Gene Expression", "gene_name"]
+                )
+                base_genes: set = set()
                 try:
                     _base_csv = Path(st.session_state.get("base_panel_csv", ""))
-                    n_predesigned = len(pd.read_csv(_base_csv)) if _base_csv.exists() else 247
+                    if _base_csv.exists():
+                        _base_df = pd.read_csv(_base_csv)
+                        _gene_col = "Genes" if "Genes" in _base_df.columns else _base_df.columns[0]
+                        base_genes = set(_base_df[_gene_col].astype(str))
                 except Exception:
-                    n_predesigned = 247
-                n_custom      = max(0, n_rna - n_predesigned)
+                    base_genes = set()
+                if base_genes:
+                    n_predesigned = len(rna_genes & base_genes)
+                    n_custom      = len(rna_genes - base_genes)
+                else:
+                    n_predesigned = min(n_rna, 247)
+                    n_custom      = max(0, n_rna - 247)
 
                 bc_path = (
                     Path(slide["run_dir"]) / "cell_feature_matrix" / "barcodes.tsv.gz"

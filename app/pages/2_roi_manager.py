@@ -526,6 +526,8 @@ for s in slides:
     )
     rows.append({
         "Slide": sid, "Condition": s["condition"], "ROI": roi_str,
-        "Cells in ROI": f"{n_inside:,}" if n_inside else "—",
+        # n_inside is None when unknown (no ROI / cells unreadable); show the
+        # number otherwise, including a genuine 0 (don't collapse it to "—").
+        "Cells in ROI": f"{n_inside:,}" if n_inside is not None else "—",
     })
 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
