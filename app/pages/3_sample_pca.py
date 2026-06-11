@@ -56,8 +56,15 @@ def _roi_signature(slide_ids, roi_dir) -> tuple:
 
 @st.cache_resource(show_spinner=False)
 def _load_combined(run_dirs, slide_ids, conditions, base_csv,
-                   roi_dir, use_roi, panel_mode, min_slides, _roi_sig):
-    """Load + harmonise + ROI-filter + concatenate all slides (cached)."""
+                   roi_dir, use_roi, panel_mode, min_slides, roi_sig):
+    """Load + harmonise + ROI-filter + concatenate all slides (cached).
+
+    ``roi_sig`` is the per-slide ROI-file signature (see ``_roi_signature``).
+    It must NOT be underscore-prefixed: Streamlit skips hashing any argument
+    whose name starts with ``_``, which would exclude it from the cache key
+    and leave the cache stale after an ROI is edited. Keeping it hashed is
+    what invalidates the cached load when a saved ROI changes.
+    """
     from src.multislide_loader import SlideManifest, MultiSlideLoader
     from src.panel_registry import PanelRegistry
     from src.roi_selector import ROISelector
