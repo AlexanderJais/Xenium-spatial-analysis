@@ -148,9 +148,30 @@ with c4:
 
 out_root = Path(st.session_state["output_dir"]) / "sample_pca"
 
+
+def _clear_outputs(out_root: Path) -> None:
+    """Delete the previous run's figures and tables.
+
+    The Results section below renders whatever figure files exist on disk.
+    Without clearing them first, a failed run would leave the *previous*
+    run's figures on display as if they were current. Clearing up front means
+    the Results section always reflects the latest attempt: fresh on success,
+    empty on failure (with the error shown).
+    """
+    figures = ["sample_pca_scatter", "sample_correlation_heatmap", "sample_pca_scree"]
+    tables = ["sample_pca_coordinates.csv", "sample_pca_variance.csv",
+              "pseudobulk_samples.h5ad"]
+    for base in figures:
+        for ext in ("png", "pdf", "svg"):
+            (out_root / f"{base}.{ext}").unlink(missing_ok=True)
+    for fname in tables:
+        (out_root / fname).unlink(missing_ok=True)
+
+
 run = st.button("▶ Run sample PCA", type="primary", use_container_width=True)
 
 if run:
+    _clear_outputs(out_root)
     try:
         with st.spinner("Loading slides, applying ROIs, and pseudobulking …"):
             run_dirs   = tuple(str(s["run_dir"]) for s in selected_slides)

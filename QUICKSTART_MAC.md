@@ -68,7 +68,7 @@ Each Xenium run directory must contain:
     experiment.xenium
 ```
 
-Go to **📁 Study Setup** and paste the full path to each of the 8 run directories. A green tick confirms validity; the page shows the cell and gene counts per slide once validated.
+Go to **📁 Study Setup** and paste the full path to each run directory. Use **➕ Add slide** / the 🗑 button to match your sample count (the page starts with the 4 + 4 AGED/ADULT template), and edit the condition labels if your groups differ. A green tick confirms validity; the page shows the cell and gene counts per slide once validated.
 
 **Tip:** On macOS, right-click a folder in Finder → Get Info → copy the path from *Where*.
 
@@ -103,12 +103,14 @@ Define the mediobasal hypothalamus (MBH) boundary on each slide.
 Go to **📊 Sample PCA** and click **Run sample PCA**. The app loads the slides, applies the saved ROIs, pseudobulks each sample, and runs PCA across them.
 
 Options:
+- **Samples to include** — pick which samples go into the PCA (minimum 2); the rest are ignored for that run.
+- **Base panel only** — on by default; restricts the PCA to the shared base panel so samples with different add-on panels stay comparable. Untick to include add-on genes.
 - **Apply MBH ROIs** — on by default once ROIs exist; turn off to use whole sections.
 - **Top variable genes** — 0 uses all genes (recommended for the targeted panel).
 - **Z-score genes** — off by default (`log1p` already stabilises variance).
 
 You get three figures inline:
-- **PCA scatter** — PC1 vs PC2, samples coloured by group (AGED/ADULT) with per-group hulls.
+- **PCA scatter** — PC1 vs PC2, samples coloured by group (AGED/ADULT) and individually labelled.
 - **Correlation heatmap** — sample-by-sample correlation, hierarchically ordered (spot outliers).
 - **Scree plot** — variance explained per PC.
 

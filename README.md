@@ -74,13 +74,15 @@ The app has exactly three steps:
 Once paths and ROIs are set (the runner reads the same `roi_cache/`):
 
 ```bash
-python run_sample_pca.py                 # load all 8 slides, apply saved ROIs, run PCA
+python run_sample_pca.py                 # load all configured slides, base panel only, run PCA
+python run_sample_pca.py --samples AGED_1 ADULT_1   # run on a subset (>=2 samples)
+python run_sample_pca.py --all-genes     # include per-slide add-on genes, not just the base panel
 python run_sample_pca.py --no-roi        # use whole sections (skip ROI filtering)
 python run_sample_pca.py --n-top-genes 200 --scale-genes   # restrict to top-variable genes, z-scored
 python run_sample_pca.py --fmt png       # PNG instead of PDF figures
 ```
 
-Slide paths are configured at the top of `run_sample_pca.py` (the `SLIDES` list), mirroring the web app's Study Setup.
+Slide paths are configured at the top of `run_sample_pca.py` (the `SLIDES` list), mirroring the web app's Study Setup. By default the PCA is restricted to the shared base panel and uses every configured slide; `--samples` selects a subset (minimum 2) and `--all-genes` opts back into the add-on genes. The web app's Sample PCA page exposes the same controls (a sample multiselect and a "Base panel only" toggle).
 
 ---
 
@@ -88,10 +90,11 @@ Slide paths are configured at the top of `run_sample_pca.py` (the `SLIDES` list)
 
 The analysis lives in `src/sample_pca.py` and runs in four steps:
 
-1. **Pseudobulk** (`pseudobulk_samples`) — sum raw counts across all cells of each slide, giving one expression profile per biological replicate (8 samples: 4 AGED + 4 ADULT).
+0. **Restrict to the base panel** (default) — drop per-slide add-on genes so every sample is compared on the shared `Xenium_mBrain_v1_1` panel (~247 genes). This matters because samples can carry different add-on panels; pass `--all-genes` (or untick "Base panel only") to keep them.
+1. **Pseudobulk** (`pseudobulk_samples`) — sum raw counts across all cells of each slide, giving one expression profile per biological replicate (one point per sample).
 2. **Normalise** (`normalize_pseudobulk`) — library-size normalise each sample to counts-per-million, then `log1p`. Without this, PCA would just rank samples by cell number / sequencing depth.
-3. **PCA** (`run_sample_pca`) — PCA across samples via scikit-learn. Uses all genes by default (recommended for targeted Xenium panels); optionally restricts to the top-variable genes and/or z-scores genes.
-4. **Plot** — a PC1/PC2 scatter coloured by group with per-group convex hulls and sample labels, a sample-by-sample correlation heatmap ordered by hierarchical clustering, and a scree plot.
+3. **PCA** (`run_sample_pca`) — PCA across samples via scikit-learn. Uses all (base panel) genes by default (recommended for targeted Xenium panels); optionally restricts to the top-variable genes and/or z-scores genes.
+4. **Plot** — a PC1/PC2 scatter coloured by group with sample labels, a sample-by-sample correlation heatmap ordered by hierarchical clustering, and a scree plot. (With only two samples PCA yields a single component, so the scatter spreads the samples along PC1.)
 
 Pseudobulk PCA is the standard QC / sanity-check for replicated studies (cf. DESeq2's `plotPCA`): each point is one biological replicate, so it is robust at n=4 per group, and it makes outlier slides immediately visible.
 
@@ -103,7 +106,7 @@ Every Xenium run produces one count matrix containing all genes for that slide:
 
 | Group | Count | Description |
 |-------|-------|-------------|
-| **Base panel** | ~247 | `Xenium_mBrain_v1_1` — identical across all 8 slides |
+| **Base panel** | ~247 | `Xenium_mBrain_v1_1` — identical across all slides |
 | **Custom panel** | ~50 | Additional genes — differs between slides, partial overlap |
 | **Total** | ~297 | Stored together in `matrix.mtx.gz` |
 
@@ -117,7 +120,7 @@ Every Xenium run produces one count matrix containing all genes for that slide:
 | **`partial_union`** | Present in ≥ `min_slides` slides | **Default — best for this study** |
 | `union` | All custom genes | Exploratory analysis only |
 
-In `partial_union` mode, slides missing a retained custom gene receive a zero-filled column flagged in `adata.var['zero_filled']`.
+In `partial_union` mode, slides missing a retained custom gene receive a zero-filled column. Because a gene can be zero-filled in one slide yet measured in another, the concatenated AnnData records this per slide in `adata.varm['zero_filled_by_slide']` (genes × slides), with study-level summaries in `adata.var['zero_filled_any']` and `adata.var['n_slides_zero_filled']`.
 
 ---
 
