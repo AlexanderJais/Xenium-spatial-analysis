@@ -4,7 +4,7 @@
 
 A streamlined tool for the first exploratory steps of a [10x Genomics Xenium](https://www.10xgenomics.com/platforms/xenium) spatial study: load the slides, frame the mediobasal hypothalamus (MBH) region on each, collapse every slide into a pseudobulk profile, and run PCA across the samples to see **how the samples cluster and how the AGED and ADULT groups separate**. When you are ready to move from samples to cells, an optional **Leiden Optimizer** sweeps clustering resolutions on the single cells and recommends the one that best balances cluster quality and granularity — so the resolution you take into cell-level analysis is chosen by metrics, not by eye.
 
-Designed for a multi-replicate, two-condition study (4 AGED + 4 ADULT brain sections) using the `Xenium_mBrain_v1_1` base panel (~247 genes) plus per-slide custom panels (~50 genes each, partially overlapping).
+Built around a multi-replicate, two-condition study using the `Xenium_mBrain_v1_1` base panel (~247 genes) plus per-slide custom panels (~50 genes each, partially overlapping). The default example is 4 AGED + 4 ADULT brain sections, but **the number of slides and the condition labels are not fixed** — add or remove slides in **Study Setup** (or the `SLIDES` list / a manifest CSV for the CLI), use whatever group names your study needs, and select any subset of slides to analyse at each step (the Sample PCA needs ≥ 2 samples).
 
 Runs entirely on your machine. No data leaves your computer.
 
@@ -111,6 +111,7 @@ The optimizer lives in `src/leiden_optimizer.py` and is driven by the **🔎 Lei
 It runs in three stages:
 
 1. **Load + embed** (`preprocess_for_clustering`) — the same slides and ROIs as the Sample PCA are loaded and concatenated, then a single-cell embedding is built on the fly: `normalize_total` → `log1p` → PCA → `sc.pp.neighbors` (the KNN graph). `obsm['spatial']` is carried through so spatial metrics stay available. The refactored pipeline only pseudobulks the cells, so this substrate (a PCA embedding + neighbour graph) does not otherwise exist — the optimizer builds it itself.
+   - **How many PCs?** — rather than guessing the number of principal components for the KNN graph, the page's **📐 How many PCs? — elbow plot** tool estimates it from the data. It uses the two-criterion [HBC elbow heuristic](https://hbctraining.github.io/scRNA-seq/lessons/elbow_plot_metric.html) (`compute_elbow_n_pcs`): the recommended cutoff is the more conservative of (a) the first PC past 90% cumulative variation that itself adds < 5%, and (b) the last PC whose drop in variation to the next is still > 0.1%. Every embedding also records this recommendation in `adata.uns['pca_elbow']`, and `plot_pca_elbow` saves the scree/elbow figure.
 2. **Optional Harmony integration** (`run_harmony`) — when several slides are pooled, plain PCA tends to separate cells by *which slide* they came from rather than by cell type. Harmony corrects the embedding (batch = `slide_id`) before the neighbour graph is built, so clustering and every metric below are computed on the batch-corrected space. On by default for multi-slide runs.
 3. **Resolution sweep** (`optimize_leiden_resolution`) — Leiden clustering is run across a grid of resolutions, and each is scored with five complementary cluster-quality metrics:
 

@@ -127,6 +127,22 @@ def preprocess_for_clustering(
     n_pcs = min(n_pcs, max_pcs)
     sc.pp.pca(adata, n_comps=n_pcs, random_state=random_state)
 
+    # Record the elbow-plot recommendation for how many PCs to retain, so the
+    # caller (and the Streamlit UI) can compare the requested ``n_pcs`` against
+    # a data-driven estimate. This only annotates uns; it does not change the
+    # embedding that was just built.
+    try:
+        elbow = compute_elbow_n_pcs(adata.uns["pca"]["variance"])
+        adata.uns["pca_elbow"] = elbow
+        logger.info(
+            "Elbow metric: ~%d PCs capture the signal "
+            "(cumulative>90%% & <5%% cutoff at PC%s; flattening cutoff at PC%s). "
+            "Using n_pcs=%d for the neighbour graph.",
+            elbow["n_pcs"], elbow["co1"], elbow["co2"], n_pcs,
+        )
+    except Exception as e:  # pragma: no cover - diagnostics only
+        logger.debug("Elbow PC estimate skipped: %s", e)
+
     # Optional Harmony batch correction. The neighbour graph (and therefore the
     # clustering + every metric the sweep scores) is then built on the corrected
     # embedding so it reflects biology rather than batch.
@@ -156,6 +172,158 @@ def preprocess_for_clustering(
         "yes" if "spatial" in adata.obsm else "no",
     )
     return adata
+
+
+# ===========================================================================
+# PC selection (elbow plot)
+# ===========================================================================
+
+def compute_elbow_n_pcs(
+    variance,
+    cum_threshold: float = 90.0,
+    pct_threshold: float = 5.0,
+    change_threshold: float = 0.1,
+) -> dict:
+    """
+    Recommend how many principal components to keep from a PCA variance curve.
+
+    Implements the two-criterion elbow heuristic from the HBC scRNA-seq
+    training (https://hbctraining.github.io/scRNA-seq/lessons/elbow_plot_metric.html),
+    which picks the number of PCs quantitatively instead of reading the elbow
+    off the plot by eye.  Both criteria work on the per-PC *standard deviation*
+    expressed as a percentage of the total (``stdev / sum(stdev) * 100``), the
+    same scale Seurat's ``ElbowPlot`` uses:
+
+      * **co1** — the first PC at which the *cumulative* percentage exceeds
+        ``cum_threshold`` (90%) while that PC individually contributes less
+        than ``pct_threshold`` (5%).  Past this point extra PCs add little.
+      * **co2** — the last PC where the drop in percentage to the next PC is
+        still greater than ``change_threshold`` (0.1%); beyond it the scree
+        curve has flattened into its tail.
+
+    The recommendation is ``min(co1, co2)`` — the more conservative cutoff.
+
+    Parameters
+    ----------
+    variance
+        Per-PC variance (eigenvalues), ordered from PC1 downwards — e.g.
+        ``adata.uns['pca']['variance']`` from scanpy.  Standard deviations are
+        derived internally as ``sqrt(variance)``.
+    cum_threshold, pct_threshold, change_threshold
+        The 90% / 5% / 0.1% cutoffs above; exposed so the heuristic can be
+        tuned for unusual panels.
+
+    Returns
+    -------
+    dict with keys:
+        ``n_pcs``      recommended number of PCs (int, 1-based count),
+        ``co1``        the cumulative/individual cutoff PC (int or None),
+        ``co2``        the flattening cutoff PC (int or None),
+        ``pct``        per-PC percentage of total stdev (list),
+        ``cumulative`` cumulative percentage (list).
+    """
+    var = np.asarray(variance, dtype=np.float64).ravel()
+    if var.size == 0:
+        raise ValueError("variance is empty; run PCA before estimating PCs.")
+
+    stdev = np.sqrt(np.clip(var, 0.0, None))
+    total = stdev.sum()
+    if total <= 0:
+        raise ValueError("All PCs have zero variance; cannot estimate PCs.")
+
+    pct = stdev / total * 100.0
+    cumu = np.cumsum(pct)
+    n = pct.size
+
+    # co1: first PC past 90% cumulative whose own contribution is < 5%.
+    co1_hits = np.where((cumu > cum_threshold) & (pct < pct_threshold))[0]
+    co1 = int(co1_hits[0] + 1) if co1_hits.size else n
+
+    # co2: last PC whose drop to the next PC still exceeds 0.1%.
+    if n > 1:
+        drops = pct[:-1] - pct[1:]
+        co2_hits = np.where(drops > change_threshold)[0]
+        co2 = int(co2_hits[-1] + 2) if co2_hits.size else 1
+    else:
+        co2 = 1
+
+    n_pcs = int(min(co1, co2))
+    n_pcs = max(1, min(n_pcs, n))
+
+    return {
+        "n_pcs": n_pcs,
+        "co1": co1,
+        "co2": co2,
+        "pct": pct.tolist(),
+        "cumulative": cumu.tolist(),
+    }
+
+
+def plot_pca_elbow(
+    adata: ad.AnnData,
+    output_dir=None,
+    fmt: str = "pdf",
+    dpi: int = 300,
+    elbow: Optional[dict] = None,
+):
+    """
+    Elbow / scree plot of per-PC variance with the recommended cutoff marked.
+
+    Plots the percentage of standard deviation explained by each PC (the
+    Seurat-style elbow) and draws a vertical line at the number of PCs
+    recommended by :func:`compute_elbow_n_pcs`.  Returns the saved path when
+    ``output_dir`` is given, otherwise the matplotlib ``Figure`` so a caller
+    (e.g. the Streamlit page) can display it directly.
+
+    ``adata`` must already carry a PCA (``adata.uns['pca']['variance']``), as
+    produced by :func:`preprocess_for_clustering`.
+    """
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
+    if "pca" not in adata.uns or "variance" not in adata.uns["pca"]:
+        raise KeyError(
+            "adata.uns['pca']['variance'] missing. "
+            "Run preprocess_for_clustering() (or sc.pp.pca) first."
+        )
+
+    if elbow is None:
+        elbow = adata.uns.get("pca_elbow") or compute_elbow_n_pcs(
+            adata.uns["pca"]["variance"]
+        )
+
+    pct = np.asarray(elbow["pct"])
+    pcs = np.arange(1, len(pct) + 1)
+    n_rec = int(elbow["n_pcs"])
+
+    mpl.rcParams.update({
+        "font.size": 7, "axes.titlesize": 8, "axes.labelsize": 7,
+        "xtick.labelsize": 6, "ytick.labelsize": 6, "legend.fontsize": 6,
+        "axes.linewidth": 0.5, "axes.spines.top": False, "axes.spines.right": False,
+        "savefig.bbox": "tight", "pdf.fonttype": 42, "ps.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(3.6, 2.8))
+    ax.plot(pcs, pct, "-o", color="#1B4F8A", ms=3, lw=0.9, zorder=3)
+    ax.axvline(n_rec, color="#D55E00", ls="--", lw=0.9, zorder=2,
+               label=f"recommended: {n_rec} PCs")
+    ax.set_xlabel("Principal component")
+    ax.set_ylabel("Std. dev. explained (%)")
+    ax.set_title("PCA elbow plot")
+    ax.legend(frameon=False, loc="best")
+    fig.tight_layout()
+
+    if output_dir is None:
+        return fig
+
+    from pathlib import Path
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"pca_elbow.{fmt}"
+    fig.savefig(path, format=fmt, dpi=dpi)
+    plt.close(fig)
+    logger.info("Saved PCA elbow plot: %s", path)
+    return path
 
 
 # ===========================================================================

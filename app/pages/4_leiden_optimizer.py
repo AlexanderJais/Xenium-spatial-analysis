@@ -121,6 +121,46 @@ def _load_and_preprocess(run_dirs, slide_ids, conditions, base_csv, roi_dir,
     )
 
 
+@st.cache_data(show_spinner=False)
+def _estimate_pca_elbow(run_dirs, slide_ids, conditions, base_csv, roi_dir,
+                        use_roi, panel_mode, min_slides, roi_sig,
+                        base_panel_only, scale_genes, max_pcs):
+    """Load + embed the slides with a generous PCA, then return the elbow-plot
+    data and the recommended number of PCs.
+
+    Kept separate from ``_load_and_preprocess`` (and from Harmony / the KNN
+    graph) so the elbow estimate is driven purely by the data, not by the
+    ``n_pcs`` the user happens to have selected for the sweep. Cached on the
+    same loading inputs so it is cheap to re-open.
+    """
+    from src.multislide_loader import SlideManifest, MultiSlideLoader
+    from src.panel_registry import PanelRegistry
+    from src.roi_selector import ROISelector
+    from src.sample_pca import _restrict_to_base_panel
+    from src.leiden_optimizer import preprocess_for_clustering
+
+    manifest = SlideManifest()
+    for sid, cond, d in zip(slide_ids, conditions, run_dirs):
+        manifest.add(slide_id=sid, condition=cond, run_dir=d, replicate_id=sid)
+
+    registry = PanelRegistry(base_csv)
+    roi_selector = ROISelector(cache_dir=roi_dir) if use_roi else None
+    loader = MultiSlideLoader(
+        manifest=manifest, panel_registry=registry, roi_selector=roi_selector,
+        panel_mode=panel_mode, min_slides=min_slides, apply_roi=use_roi,
+    )
+    adata = loader.load_all()
+    if base_panel_only:
+        adata = _restrict_to_base_panel(adata)
+
+    # n_neighbors is irrelevant to the PCA variance curve; keep it small/cheap.
+    adata = preprocess_for_clustering(
+        adata, n_pcs=max_pcs, n_neighbors=2, scale_genes=scale_genes,
+        batch_key=None,
+    )
+    return dict(adata.uns["pca_elbow"])
+
+
 def _persist_resolution(res: float, output_dir: Path) -> Path:
     """Write the chosen Leiden resolution to a settings JSON in the output dir.
 
@@ -318,6 +358,63 @@ with o2:
         st.caption("Only one slide selected — nothing to integrate.")
     elif use_harmony:
         st.caption("Clusters will be computed on the Harmony-corrected embedding (batch = `slide_id`).")
+
+# ── How many PCs? (elbow plot) ────────────────────────────────────────────────
+with st.expander("📐 How many PCs? — elbow plot", expanded=False):
+    st.caption(
+        "Estimate how many principal components actually carry signal, so the "
+        "**PCA components** above isn't just a guess. Uses the two-criterion "
+        "elbow heuristic from the "
+        "[HBC scRNA-seq training](https://hbctraining.github.io/scRNA-seq/lessons/elbow_plot_metric.html): "
+        "the recommended cutoff is the more conservative of (a) the first PC past "
+        "90% cumulative variation that itself adds <5%, and (b) the last PC whose "
+        "drop in variation to the next is still >0.1%."
+    )
+    if st.button("Estimate from data", key="estimate_pcs"):
+        try:
+            with st.spinner("Loading slides and computing PCA variance …"):
+                run_dirs   = tuple(str(s["run_dir"]) for s in selected_slides)
+                sids       = tuple(s["slide_id"] for s in selected_slides)
+                conditions = tuple(s["condition"] for s in selected_slides)
+                roi_sig    = _roi_signature(sids, st.session_state["roi_cache_dir"])
+                elbow = _estimate_pca_elbow(
+                    run_dirs, sids, conditions,
+                    st.session_state["base_panel_csv"],
+                    st.session_state["roi_cache_dir"], use_roi,
+                    st.session_state["panel_mode"], int(st.session_state["min_slides"]),
+                    roi_sig, bool(base_panel_only), bool(scale_genes), 50,
+                )
+            st.session_state["pca_elbow"] = elbow
+        except Exception as e:
+            st.error(f"Could not estimate PCs: {e}")
+
+    elbow = st.session_state.get("pca_elbow")
+    if elbow:
+        import plotly.graph_objects as go
+
+        pct = elbow["pct"]
+        pcs = list(range(1, len(pct) + 1))
+        n_rec = int(elbow["n_pcs"])
+        st.success(
+            f"**Recommended: {n_rec} PCs**  "
+            f"(90%/5% cutoff at PC{elbow['co1']}, flattening cutoff at PC{elbow['co2']}). "
+            f"Set **PCA components** above to {n_rec}."
+        )
+        fig_elbow = go.Figure()
+        fig_elbow.add_trace(go.Scatter(
+            x=pcs, y=pct, mode="lines+markers", name="Std. dev. (%)",
+            line=dict(color="#1B4F8A", width=2), marker=dict(size=5),
+        ))
+        fig_elbow.add_vline(
+            x=n_rec, line_dash="dash", line_color="#D55E00",
+            annotation_text=f"recommended: {n_rec}", annotation_position="top right",
+        )
+        fig_elbow.update_layout(
+            xaxis_title="Principal component", yaxis_title="Std. dev. explained (%)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40, l=50, r=20),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_elbow, use_container_width=True)
 
 batch_key = "slide_id" if (use_harmony and len(selected_slides) > 1) else None
 

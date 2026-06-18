@@ -3,8 +3,13 @@ multislide_loader.py
 --------------------
 Multi-slide loader for the AGED vs ADULT mouse brain Xenium study.
 
+The number of slides and the condition labels are configurable — the
+manifest accepts any number of slides across any number of groups (the
+4 AGED + 4 ADULT, 8-slide design below is just the default example).
+
 Handles:
-  - 4 AGED + 4 ADULT brain sections (8 slides total)
+  - Any number of brain sections across two (or more) conditions
+    (default example: 4 AGED + 4 ADULT = 8 slides)
   - A shared base panel (Xenium_mBrain_v1_1) across all slides
   - Per-slide custom gene addons (varying between runs)
   - Panel harmonisation via PanelRegistry
@@ -43,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 # ===========================================================================
-# SlideManifest: describes all 8 slides
+# SlideManifest: describes the study's slides (any number)
 # ===========================================================================
 
 class SlideManifest:
