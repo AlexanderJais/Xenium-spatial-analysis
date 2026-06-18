@@ -7,7 +7,8 @@ Four steps:
     1. Study Setup      — point to the Xenium output directories
     2. ROI Manager      — frame the MBH region per slide
     3. Sample PCA       — pseudobulk PCA across the samples (Nature-style)
-    4. Leiden Optimizer — sweep clustering resolutions and pick the best
+    4. Leiden Optimizer — estimate PCs (elbow plot), sweep clustering
+                           resolutions and pick the best
 
 Run with:  streamlit run app/app.py
 """
@@ -204,7 +205,7 @@ STEPS = [
     (1, "Study Setup", "Enter the path to each Xenium run folder; a green tick confirms it is valid. Save/load the full config as JSON."),
     (2, "ROI Manager", "Frame the mediobasal hypothalamus on each section with the interactive scatter; a dashed orange ellipse marks the atlas hint."),
     (3, "Sample PCA",  "Pseudobulk each slide and run PCA across the samples — see how samples and the condition groups separate."),
-    (4, "Leiden Optimizer", "Sweep Leiden resolutions on the cells, score each with silhouette / modularity / spatial coherence, and apply the best to the pipeline settings."),
+    (4, "Leiden Optimizer", "Estimate how many PCs to keep with the elbow plot, then sweep Leiden resolutions on the cells, score each with silhouette / modularity / spatial coherence, and apply the best to the pipeline settings."),
 ]
 items = []
 for step_n, title, desc in STEPS:

@@ -285,7 +285,11 @@ st.markdown(
     "A weighted combined score identifies the resolution that best balances "
     "cluster quality and granularity. A **clustree** plot shows how clusters "
     "split and merge across resolutions. One click applies the recommendation "
-    "to the pipeline settings."
+    "to the pipeline settings.\n\n"
+    "Before sweeping, the **📐 How many PCs? — elbow plot** tool (under "
+    "*Preprocessing*, below) estimates how many principal components to keep "
+    "for the embedding, so the *PCA components* setting is chosen from the data "
+    "rather than guessed."
 )
 st.divider()
 
@@ -334,7 +338,9 @@ with p2:
                                      "comparable across slides.")
 with p3:
     n_pcs = st.number_input("PCA components", min_value=2, max_value=200, value=50, step=5,
-                            help="Principal components used for the embedding and KNN graph.")
+                            help="Principal components used for the embedding and KNN graph. "
+                                 "Not sure how many? Use the elbow-plot tool just below to "
+                                 "estimate it from the data.")
 with p4:
     n_neighbors = st.number_input("KNN neighbours", min_value=2, max_value=100, value=15, step=1,
                                   help="Neighbours for the graph that Leiden clusters and "
@@ -360,7 +366,7 @@ with o2:
         st.caption("Clusters will be computed on the Harmony-corrected embedding (batch = `slide_id`).")
 
 # ── How many PCs? (elbow plot) ────────────────────────────────────────────────
-with st.expander("📐 How many PCs? — elbow plot", expanded=False):
+with st.expander("📐 How many PCs? — elbow plot", expanded=True):
     st.caption(
         "Estimate how many principal components actually carry signal, so the "
         "**PCA components** above isn't just a guess. Uses the two-criterion "
