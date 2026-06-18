@@ -27,6 +27,12 @@ outputs/
 *_output/
 figures_output/
 
+# Packaging / test artifacts
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Jupyter
 .ipynb_checkpoints/
 

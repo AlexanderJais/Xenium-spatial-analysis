@@ -27,7 +27,7 @@ cell.
 Design notes
 ------------
 * Operates on a single concatenated AnnData (output of
-  :class:`src.multislide_loader.MultiSlideLoader`) that already has
+  :class:`xenium_spatial.multislide_loader.MultiSlideLoader`) that already has
   ROI filtering applied and raw counts in ``.layers['counts']``.
 * Depends only on numpy / pandas / scipy / scikit-learn / matplotlib
   (no scanpy), so it can run in a minimal environment.
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Minimal figure style (kept local so this module has no seaborn / scanpy
 # dependency — it only needs numpy/pandas/scipy/sklearn/matplotlib).
-# Mirrors the Nature-grade constants in src.figures.
+# Mirrors the Nature-grade constants in xenium_spatial.figures.
 # ---------------------------------------------------------------------------
 _NATURE_RC = {
     "font.size": 7, "axes.titlesize": 8, "axes.labelsize": 7,
@@ -578,7 +578,7 @@ def _restrict_to_base_panel(adata: ad.AnnData) -> ad.AnnData:
     Subset an AnnData to the shared Xenium base panel genes.
 
     Relies on the ``var['panel_type']`` column written by
-    :class:`src.panel_registry.PanelRegistry` during harmonisation, where
+    :class:`xenium_spatial.panel_registry.PanelRegistry` during harmonisation, where
     base-panel genes are tagged ``'base'`` and add-on genes ``'custom'`` /
     ``'custom_shared'`` / ``'custom_unique'``.  Add-on genes are dropped so
     the PCA only uses the 247 genes common to every slide.

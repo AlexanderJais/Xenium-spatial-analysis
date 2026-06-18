@@ -21,23 +21,27 @@ cluster quality and granularity.
 Design notes
 ------------
 The refactored pipeline loads cell-level data via
-:class:`src.multislide_loader.MultiSlideLoader` but only ever pseudobulks it,
+:class:`xenium_spatial.multislide_loader.MultiSlideLoader` but only ever pseudobulks it,
 so the single-cell substrate the sweep needs (a PCA embedding and a KNN
 neighbour graph) does not exist yet.  :func:`preprocess_for_clustering`
 builds that substrate on the fly — normalise -> log1p -> PCA ->
 ``sc.pp.neighbors`` — keeping ``obsm['spatial']`` intact so spatial coherence
 can be scored.  :func:`optimize_leiden_resolution` then runs the sweep.
 
-Unlike :mod:`src.sample_pca`, this module depends on **scanpy** + **igraph** +
+Unlike :mod:`xenium_spatial.sample_pca`, this module depends on **scanpy** + **igraph** +
 **leidenalg** (Leiden clustering and modularity are not in the minimal stack).
 """
 
-import logging
-from typing import Optional
+from __future__ import annotations
 
-import anndata as ad
+import logging
+from typing import Optional, TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    import anndata as ad
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +63,7 @@ def preprocess_for_clustering(
     """
     Build the single-cell embedding + neighbour graph the sweep requires.
 
-    The :class:`~src.multislide_loader.MultiSlideLoader` output carries only
+    The :class:`~xenium_spatial.multislide_loader.MultiSlideLoader` output carries only
     raw counts (in ``.X`` / ``layers['counts']``) and ``obsm['spatial']``.
     The Leiden sweep needs ``obsm['X_pca']`` and ``obsp['connectivities']``,
     so this runs the standard cell-level recipe:

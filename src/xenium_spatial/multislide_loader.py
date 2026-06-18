@@ -40,9 +40,9 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-from src.xenium_loader import load_xenium_run
-from src.panel_registry import PanelRegistry
-from src.roi_selector import ROISelector
+from xenium_spatial.xenium_loader import load_xenium_run
+from xenium_spatial.panel_registry import PanelRegistry
+from xenium_spatial.roi_selector import ROISelector
 
 logger = logging.getLogger(__name__)
 

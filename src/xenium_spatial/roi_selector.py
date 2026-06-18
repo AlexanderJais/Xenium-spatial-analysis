@@ -22,7 +22,7 @@ The polygon is defined by ``vertices`` (in µm); a rectangle is just a
 
 Usage
 -----
-    from src.roi_selector import ROISelector
+    from xenium_spatial.roi_selector import ROISelector
 
     selector = ROISelector(cache_dir="roi_cache")
     adata_mbh = selector.apply_roi(adata_slide1, slide_id="AGED_1")

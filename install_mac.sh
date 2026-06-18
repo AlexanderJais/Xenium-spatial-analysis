@@ -201,6 +201,15 @@ else
     warn "  conda install -n ${ENV_NAME} -c conda-forge scanpy python-igraph leidenalg harmonypy"
 fi
 
+# --- 4d. Install the project itself (editable) -------------------------------
+# Installs the xenium_spatial package so `import xenium_spatial` works from
+# anywhere (the dependencies above are already satisfied, so --no-deps is safe
+# and fast).
+log "Installing the xenium_spatial package (editable) …"
+pip install -e . --no-deps --quiet \
+    && ok "xenium_spatial installed (editable)." \
+    || warn "Editable install failed; the app still works via its src/ path shim."
+
 # =============================================================================
 # 5. Verification
 # =============================================================================
@@ -298,7 +307,7 @@ echo -e "    ${CYAN}conda activate ${ENV_NAME}${RESET}"
 echo -e "    ${CYAN}streamlit run app/app.py${RESET}"
 echo ""
 echo -e "  ${BOLD}To run the sample PCA from the command line:${RESET}"
-echo -e "    ${CYAN}conda activate ${ENV_NAME} && python run_sample_pca.py${RESET}"
+echo -e "    ${CYAN}conda activate ${ENV_NAME} && python scripts/run_sample_pca.py${RESET}"
 echo ""
 echo -e "  ${BOLD}Note:${RESET} Open a new Terminal tab before running — the"
 echo -e "  'conda activate' command needs the updated shell profile."

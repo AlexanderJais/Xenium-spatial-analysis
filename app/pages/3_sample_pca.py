@@ -21,9 +21,11 @@ st.set_page_config(page_title="Sample PCA · Xenium Sample PCA", page_icon="📊
     initial_sidebar_state="expanded")
 
 inject_css()
+# Make the xenium_spatial package importable when the app is run without an
+# editable install (src layout: the package lives under <repo>/src).
 _ROOT = Path(__file__).parent.parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 # ── Session state ─────────────────────────────────────────────────────────────
 for k, v in {
@@ -65,9 +67,9 @@ def _load_combined(run_dirs, slide_ids, conditions, base_csv,
     and leave the cache stale after an ROI is edited. Keeping it hashed is
     what invalidates the cached load when a saved ROI changes.
     """
-    from src.multislide_loader import SlideManifest, MultiSlideLoader
-    from src.panel_registry import PanelRegistry
-    from src.roi_selector import ROISelector
+    from xenium_spatial.multislide_loader import SlideManifest, MultiSlideLoader
+    from xenium_spatial.panel_registry import PanelRegistry
+    from xenium_spatial.roi_selector import ROISelector
 
     manifest = SlideManifest()
     for sid, cond, d in zip(slide_ids, conditions, run_dirs):
@@ -188,7 +190,7 @@ if run:
             )
 
         with st.spinner("Running PCA and rendering figures …"):
-            from src.sample_pca import (
+            from xenium_spatial.sample_pca import (
                 sample_level_pca_analysis,
                 plot_sample_pca, plot_sample_correlation, plot_scree,
             )

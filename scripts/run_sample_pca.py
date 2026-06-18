@@ -42,12 +42,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Make the xenium_spatial package importable without an editable install
+# (src layout: the package lives under <repo>/src; this script is in <repo>/scripts).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from src.multislide_loader import SlideManifest, MultiSlideLoader
-from src.panel_registry import PanelRegistry
-from src.roi_selector import ROISelector
-from src.sample_pca import sample_level_pca_analysis
+from xenium_spatial.multislide_loader import SlideManifest, MultiSlideLoader
+from xenium_spatial.panel_registry import PanelRegistry
+from xenium_spatial.roi_selector import ROISelector
+from xenium_spatial.sample_pca import sample_level_pca_analysis
 
 logger = logging.getLogger("SamplePCA")
 
@@ -56,10 +59,10 @@ logger = logging.getLogger("SamplePCA")
 # Study configuration (edit these paths, or use the web app's Study Setup)
 # ===========================================================================
 
-ROOT_DATA  = Path("data")
-OUTPUT_DIR = Path("figures_output_sample_pca")
-ROI_CACHE  = Path("roi_cache")
-BASE_PANEL = Path("data/Xenium_mBrain_v1_1_metadata.csv")
+ROOT_DATA  = _REPO_ROOT / "data"
+OUTPUT_DIR = _REPO_ROOT / "figures_output_sample_pca"
+ROI_CACHE  = _REPO_ROOT / "roi_cache"
+BASE_PANEL = _REPO_ROOT / "data" / "Xenium_mBrain_v1_1_metadata.csv"
 
 SLIDES = [
     {"slide_id": "AGED_1",  "condition": "AGED",  "run_dir": ROOT_DATA / "AGED_1"},

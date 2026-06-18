@@ -51,8 +51,8 @@ Your browser opens at http://localhost:8501.
 **Option B — Command line (headless, after ROIs are saved):**
 ```bash
 conda activate xenium_sample_pca
-python run_sample_pca.py            # apply saved ROIs, run PCA
-python run_sample_pca.py --no-roi   # use whole sections
+python scripts/run_sample_pca.py            # apply saved ROIs, run PCA
+python scripts/run_sample_pca.py --no-roi   # use whole sections
 ```
 
 ---

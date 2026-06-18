@@ -29,8 +29,10 @@ st.set_page_config(
 inject_css()
 
 _ROOT = Path(__file__).parent.parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+# Make the xenium_spatial package importable without an editable install
+# (src layout: the package lives under <repo>/src).
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 # ── Session state ─────────────────────────────────────────────────────────────
 for k, v in {
@@ -93,11 +95,11 @@ def _load_and_preprocess(run_dirs, slide_ids, conditions, base_csv, roi_dir,
     whose name starts with ``_``, which would exclude it from the cache key
     and leave the cache stale after an ROI is edited.
     """
-    from src.multislide_loader import SlideManifest, MultiSlideLoader
-    from src.panel_registry import PanelRegistry
-    from src.roi_selector import ROISelector
-    from src.sample_pca import _restrict_to_base_panel
-    from src.leiden_optimizer import preprocess_for_clustering
+    from xenium_spatial.multislide_loader import SlideManifest, MultiSlideLoader
+    from xenium_spatial.panel_registry import PanelRegistry
+    from xenium_spatial.roi_selector import ROISelector
+    from xenium_spatial.sample_pca import _restrict_to_base_panel
+    from xenium_spatial.leiden_optimizer import preprocess_for_clustering
 
     manifest = SlideManifest()
     for sid, cond, d in zip(slide_ids, conditions, run_dirs):
@@ -133,11 +135,11 @@ def _estimate_pca_elbow(run_dirs, slide_ids, conditions, base_csv, roi_dir,
     ``n_pcs`` the user happens to have selected for the sweep. Cached on the
     same loading inputs so it is cheap to re-open.
     """
-    from src.multislide_loader import SlideManifest, MultiSlideLoader
-    from src.panel_registry import PanelRegistry
-    from src.roi_selector import ROISelector
-    from src.sample_pca import _restrict_to_base_panel
-    from src.leiden_optimizer import preprocess_for_clustering
+    from xenium_spatial.multislide_loader import SlideManifest, MultiSlideLoader
+    from xenium_spatial.panel_registry import PanelRegistry
+    from xenium_spatial.roi_selector import ROISelector
+    from xenium_spatial.sample_pca import _restrict_to_base_panel
+    from xenium_spatial.leiden_optimizer import preprocess_for_clustering
 
     manifest = SlideManifest()
     for sid, cond, d in zip(slide_ids, conditions, run_dirs):
@@ -485,7 +487,7 @@ st.divider()
 run_clicked = st.button("▶ Run resolution sweep", type="primary", use_container_width=True)
 
 if run_clicked:
-    from src.leiden_optimizer import optimize_leiden_resolution
+    from xenium_spatial.leiden_optimizer import optimize_leiden_resolution
 
     try:
         with st.spinner("Loading slides, applying ROIs, and building the embedding …"):
